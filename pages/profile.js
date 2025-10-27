@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import BottomNav from '../components/BottomNav';
-import { User, Scale, TrendingUp, Calendar, X, Check } from 'lucide-react';
+import { User, Scale, TrendingUp, Calendar, X, Check, ChevronDown, Activity } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Profile() {
   const [profileData, setProfileData] = useState(null);
@@ -12,6 +13,17 @@ export default function Profile() {
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [activeTab, setActiveTab] = useState('weight');
+  
+  // Workout states
+  const [workoutCategory, setWorkoutCategory] = useState('');
+  const [workoutSheets, setWorkoutSheets] = useState([]);
+  const [selectedSheet, setSelectedSheet] = useState('');
+  const [exerciseStats, setExerciseStats] = useState([]);
+  const [loadingWorkouts, setLoadingWorkouts] = useState(false);
+  
+  // Run stats
+  const [runStats, setRunStats] = useState(null);
 
   useEffect(() => {
     loadProfile();
@@ -40,6 +52,77 @@ export default function Profile() {
       setPageLoading(false);
     }
   };
+
+  const loadWorkoutCategory = async (category) => {
+    setLoadingWorkouts(true);
+    setWorkoutCategory(category);
+    setSelectedSheet('');
+    setExerciseStats([]);
+    
+    try {
+      const response = await fetch(`/api/history/workouts?category=${category}`);
+      const data = await response.json();
+      if (data.sheets) {
+        setWorkoutSheets(data.sheets);
+      }
+    } catch (err) {
+      console.error('Failed to load workout sheets:', err);
+    } finally {
+      setLoadingWorkouts(false);
+    }
+  };
+
+  const loadExerciseStats = async (sheet) => {
+    setLoadingWorkouts(true);
+    setSelectedSheet(sheet);
+    setExerciseStats([]); // Clear previous stats
+    
+    try {
+      // Add timestamp to bypass cache
+      const response = await fetch(`/api/history/workouts?sheet=${sheet}&t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('Received exercise stats:', data);
+      console.log('Exercise stats array:', data.exerciseStats);
+      
+      if (data.exerciseStats && Array.isArray(data.exerciseStats)) {
+        console.log('Setting exercise stats, count:', data.exerciseStats.length);
+        setExerciseStats([...data.exerciseStats]); // Force new array reference
+      } else {
+        console.error('Invalid exercise stats data:', data);
+      }
+    } catch (err) {
+      console.error('Failed to load exercise stats:', err);
+    } finally {
+      setLoadingWorkouts(false);
+    }
+  };
+
+  const loadRunStats = async () => {
+    try {
+      const response = await fetch('/api/history/runs');
+      const data = await response.json();
+      setRunStats(data);
+    } catch (err) {
+      console.error('Failed to load run stats:', err);
+    }
+  };
+
+  // Load run stats when switching to runs tab
+  useEffect(() => {
+    if (activeTab === 'runs' && !runStats) {
+      loadRunStats();
+    }
+  }, [activeTab]);
 
   const calculateAge = (dob) => {
     if (!dob) return 0;
@@ -281,27 +364,281 @@ export default function Profile() {
                 </button>
               </div>
 
-              {/* Weight History */}
-              {weightHistory.length > 0 && (
-                <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <Calendar size={20} />
-                    Weight History
-                  </h3>
-                  
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {[...weightHistory].reverse().map((entry, index) => (
-                      <div key={index} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                        <span className="text-sm text-gray-600">{entry[0]}</span>
-                        <div className="flex gap-4">
-                          <span className="text-sm font-semibold text-gray-900">{entry[1]} kg</span>
-                          <span className="text-sm text-gray-500">{entry[2]} cal</span>
+              {/* History Section with Tabs */}
+              <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+                {/* Tab Header */}
+                <div className="flex border-b border-gray-200">
+                  <button
+                    onClick={() => setActiveTab('weight')}
+                    className={`flex-1 py-3 text-sm font-semibold transition ${
+                      activeTab === 'weight'
+                        ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Weight
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('workouts')}
+                    className={`flex-1 py-3 text-sm font-semibold transition ${
+                      activeTab === 'workouts'
+                        ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Workouts
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('runs')}
+                    className={`flex-1 py-3 text-sm font-semibold transition ${
+                      activeTab === 'runs'
+                        ? 'bg-cyan-50 text-cyan-600 border-b-2 border-cyan-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Runs
+                  </button>
+                </div>
+
+                {/* Tab Content */}
+                <div className="p-6">
+                  {/* Weight Tab */}
+                  {activeTab === 'weight' && weightHistory.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <TrendingUp size={20} />
+                        Weight Progress
+                      </h3>
+                      
+                      <div className="w-full h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={weightHistory.map(entry => ({
+                              date: entry[0],
+                              weight: parseFloat(entry[1]) || 0
+                            }))}
+                            margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis 
+                              dataKey="date" 
+                              tick={{ fontSize: 12, fill: '#6b7280' }}
+                              angle={-45}
+                              textAnchor="end"
+                              height={60}
+                            />
+                            <YAxis 
+                              tick={{ fontSize: 12, fill: '#6b7280' }}
+                              label={{ value: 'Weight (kg)', angle: -90, position: 'insideLeft', style: { fontSize: 12, fill: '#6b7280' } }}
+                            />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: '#ffffff', 
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '8px',
+                                padding: '8px 12px'
+                              }}
+                              labelStyle={{ color: '#6b7280', fontSize: 12 }}
+                              itemStyle={{ color: '#8b5cf6', fontWeight: 600 }}
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="weight" 
+                              stroke="#8b5cf6" 
+                              strokeWidth={2}
+                              dot={{ fill: '#8b5cf6', r: 4 }}
+                              activeDot={{ r: 6 }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Weight Stats */}
+                      <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-gray-200">
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500">Lowest</p>
+                          <p className="text-sm font-bold text-gray-900">
+                            {Math.min(...weightHistory.map(e => parseFloat(e[1]) || 0))} kg
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500">Current</p>
+                          <p className="text-sm font-bold text-purple-600">
+                            {weightHistory[weightHistory.length - 1][1]} kg
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500">Highest</p>
+                          <p className="text-sm font-bold text-gray-900">
+                            {Math.max(...weightHistory.map(e => parseFloat(e[1]) || 0))} kg
+                          </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+
+                  {/* Workouts Tab */}
+                  {activeTab === 'workouts' && (
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Activity size={20} />
+                        Workout Statistics
+                      </h3>
+                      
+                      {!workoutCategory ? (
+                        <div className="space-y-3">
+                          <p className="text-sm text-gray-600 mb-3">Select a category:</p>
+                          <button
+                            onClick={() => loadWorkoutCategory('push')}
+                            className="w-full bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 hover:border-blue-300 rounded-lg p-4 transition text-left"
+                          >
+                            <h4 className="font-semibold text-blue-900">💪 Push</h4>
+                            <p className="text-xs text-blue-600 mt-1">Chest, Shoulders, Triceps</p>
+                          </button>
+                          <button
+                            onClick={() => loadWorkoutCategory('pull')}
+                            className="w-full bg-green-50 hover:bg-green-100 border-2 border-green-200 hover:border-green-300 rounded-lg p-4 transition text-left"
+                          >
+                            <h4 className="font-semibold text-green-900">🎯 Pull</h4>
+                            <p className="text-xs text-green-600 mt-1">Back, Biceps, Rear Delts</p>
+                          </button>
+                          <button
+                            onClick={() => loadWorkoutCategory('leg')}
+                            className="w-full bg-purple-50 hover:bg-purple-100 border-2 border-purple-200 hover:border-purple-300 rounded-lg p-4 transition text-left"
+                          >
+                            <h4 className="font-semibold text-purple-900">🦵 Legs</h4>
+                            <p className="text-xs text-purple-600 mt-1">Quads, Hamstrings, Calves</p>
+                          </button>
+                        </div>
+                      ) : !selectedSheet ? (
+                        <div>
+                          <button
+                            onClick={() => setWorkoutCategory('')}
+                            className="text-sm text-gray-600 hover:text-gray-900 mb-4 flex items-center gap-1"
+                          >
+                            ← Back
+                          </button>
+                          
+                          {loadingWorkouts ? (
+                            <p className="text-center text-gray-500 py-4">Loading...</p>
+                          ) : (
+                            <div className="space-y-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Select workout:
+                              </label>
+                              {workoutSheets.map((sheet) => (
+                                <button
+                                  key={sheet}
+                                  onClick={() => loadExerciseStats(sheet)}
+                                  className="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg p-3 transition text-left flex items-center justify-between"
+                                >
+                                  <span className="font-medium text-gray-900">{sheet}</span>
+                                  <ChevronDown size={16} className="text-gray-400" />
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div>
+                          <button
+                            onClick={() => {
+                              setSelectedSheet('');
+                              setExerciseStats([]);
+                            }}
+                            className="text-sm text-gray-600 hover:text-gray-900 mb-4 flex items-center gap-1"
+                          >
+                            ← Back
+                          </button>
+                          
+                          <h4 className="font-semibold text-gray-900 mb-4">{selectedSheet}</h4>
+                          
+                          {loadingWorkouts ? (
+                            <p className="text-center text-gray-500 py-4">Loading...</p>
+                          ) : (
+                            <div className="space-y-4 max-h-96 overflow-y-auto">
+                              {exerciseStats.map((stat, index) => (
+                                <div key={index} className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-gray-200">
+                                  <h5 className="font-semibold text-gray-900 mb-3">{stat.exercise}</h5>
+                                  <div className="grid grid-cols-3 gap-3">
+                                    <div>
+                                      <p className="text-xs text-gray-500 mb-2">Weight (kg)</p>
+                                      <div className="space-y-1">
+                                        <p className="text-xs"><span className="text-green-600 font-semibold">Max:</span> {stat.maxWeight}</p>
+                                        <p className="text-xs"><span className="text-blue-600 font-semibold">Avg:</span> {stat.avgWeight}</p>
+                                        <p className="text-xs"><span className="text-gray-600 font-semibold">Min:</span> {stat.minWeight}</p>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500 mb-2">Sets</p>
+                                      <div className="space-y-1">
+                                        <p className="text-xs"><span className="text-green-600 font-semibold">Max:</span> {stat.maxSets}</p>
+                                        <p className="text-xs"><span className="text-blue-600 font-semibold">Avg:</span> {stat.avgSets}</p>
+                                        <p className="text-xs"><span className="text-gray-600 font-semibold">Min:</span> {stat.minSets}</p>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500 mb-2">Reps</p>
+                                      <div className="space-y-1">
+                                        <p className="text-xs"><span className="text-green-600 font-semibold">Max:</span> {stat.maxReps}</p>
+                                        <p className="text-xs"><span className="text-blue-600 font-semibold">Avg:</span> {stat.avgReps}</p>
+                                        <p className="text-xs"><span className="text-gray-600 font-semibold">Min:</span> {stat.minReps}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-2">Total sessions: {stat.totalSessions}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Runs Tab */}
+                  {activeTab === 'runs' && (
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                        <Activity size={20} />
+                        Run Statistics
+                      </h3>
+                      
+                      {!runStats ? (
+                        <p className="text-center text-gray-500 py-8">Loading...</p>
+                      ) : runStats.totalRuns === 0 ? (
+                        <p className="text-center text-gray-500 py-8">No run history yet</p>
+                      ) : (
+                        <div>
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div className="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-lg p-4 border border-cyan-200">
+                              <p className="text-xs text-gray-600 mb-1">Total Distance</p>
+                              <p className="text-2xl font-bold text-cyan-700">{runStats.totalDistance} km</p>
+                            </div>
+                            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg p-4 border border-purple-200">
+                              <p className="text-xs text-gray-600 mb-1">Total Runs</p>
+                              <p className="text-2xl font-bold text-purple-700">{runStats.totalRuns}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+                              <p className="text-xs text-gray-600 mb-1">Avg Pace</p>
+                              <p className="text-xl font-bold text-green-700">{runStats.avgPace}</p>
+                              <p className="text-xs text-gray-500">min/km</p>
+                            </div>
+                            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-lg p-4 border border-orange-200">
+                              <p className="text-xs text-gray-600 mb-1">Avg Cadence</p>
+                              <p className="text-xl font-bold text-orange-700">{runStats.avgCadence}</p>
+                              <p className="text-xs text-gray-500">spm</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </>
           )}
         </div>

@@ -263,3 +263,185 @@ export async function saveWeightEntry(date, weight, tdee) {
   }
 }
 
+// Get workout sheets by category
+export async function getWorkoutsByCategory(category) {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+
+  try {
+    // Get all sheet names
+    const sheetNamesResponse = await sheets.spreadsheets.get({
+      spreadsheetId,
+    });
+
+    const allSheets = sheetNamesResponse.data.sheets.map((sheet) => sheet.properties.title);
+    const categorySheets = allSheets.filter(name => 
+      name.toLowerCase().includes(category.toLowerCase())
+    );
+
+    return categorySheets;
+  } catch (error) {
+    console.error('Error fetching workout sheets:', error);
+    throw error;
+  }
+}
+
+// Get detailed exercise statistics for a specific workout sheet
+export async function getWorkoutExerciseStats(sheetName) {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+
+  try {
+    // Get exercise names from column A
+    const exerciseResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!A2:A100`,
+    });
+
+    const exercises = exerciseResponse.data.values?.map((row) => row[0]).filter(Boolean) || [];
+
+    // Get all session data
+    const dataResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!B2:ZZ100`,
+    });
+
+    const sessionData = dataResponse.data.values || [];
+    
+    console.log('Sheet:', sheetName);
+    console.log('Exercises:', exercises);
+    console.log('Session Data:', sessionData);
+
+    // Calculate stats for each exercise
+    const exerciseStats = exercises.map((exerciseName, exerciseIndex) => {
+      const allData = [];
+      
+      // sessionData is an array of rows, where each row corresponds to an exercise
+      // Each row contains cells from different sessions (columns B, C, D, etc.)
+      const exerciseRow = sessionData[exerciseIndex];
+      
+      console.log(`Exercise: ${exerciseName}, Row:`, exerciseRow);
+      
+      if (exerciseRow && Array.isArray(exerciseRow)) {
+        exerciseRow.forEach(cell => {
+          if (cell && typeof cell === 'string' && cell.trim() !== '') {
+            const parts = cell.split('/');
+            if (parts.length === 3) {
+              const weight = parseFloat(parts[0]) || 0;
+              const sets = parseFloat(parts[1]) || 0;
+              const reps = parseFloat(parts[2]) || 0;
+              console.log(`  Cell: ${cell} -> Weight: ${weight}, Sets: ${sets}, Reps: ${reps}`);
+              if (weight > 0 || sets > 0 || reps > 0) {
+                allData.push({ weight, sets, reps });
+              }
+            }
+          }
+        });
+      }
+      
+      console.log(`  All Data for ${exerciseName}:`, allData);
+
+      if (allData.length === 0) {
+        return {
+          exercise: exerciseName,
+          maxWeight: 0,
+          minWeight: 0,
+          avgWeight: 0,
+          maxSets: 0,
+          minSets: 0,
+          avgSets: 0,
+          maxReps: 0,
+          minReps: 0,
+          avgReps: 0,
+          totalSessions: 0
+        };
+      }
+
+      const weights = allData.map(d => d.weight).filter(w => w > 0);
+      const sets = allData.map(d => d.sets).filter(s => s > 0);
+      const reps = allData.map(d => d.reps).filter(r => r > 0);
+
+      const stats = {
+        exercise: exerciseName,
+        maxWeight: weights.length > 0 ? Math.max(...weights) : 0,
+        minWeight: weights.length > 0 ? Math.min(...weights) : 0,
+        avgWeight: weights.length > 0 ? Math.round(weights.reduce((a, b) => a + b, 0) / weights.length) : 0,
+        maxSets: sets.length > 0 ? Math.max(...sets) : 0,
+        minSets: sets.length > 0 ? Math.min(...sets) : 0,
+        avgSets: sets.length > 0 ? Math.round(sets.reduce((a, b) => a + b, 0) / sets.length) : 0,
+        maxReps: reps.length > 0 ? Math.max(...reps) : 0,
+        minReps: reps.length > 0 ? Math.min(...reps) : 0,
+        avgReps: reps.length > 0 ? Math.round(reps.reduce((a, b) => a + b, 0) / reps.length) : 0,
+        totalSessions: allData.length
+      };
+      
+      console.log(`  Stats for ${exerciseName}:`, stats);
+      return stats;
+    });
+
+    return exerciseStats;
+  } catch (error) {
+    console.error('Error fetching exercise stats:', error);
+    throw error;
+  }
+}
+
+// Get run statistics
+export async function getRunStats() {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetName = 'Run';
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!A2:E1000`,
+    });
+
+    const runs = response.data.values || [];
+    
+    if (runs.length === 0) {
+      return {
+        totalDistance: 0,
+        totalRuns: 0,
+        avgPace: 'N/A',
+        avgCadence: 'N/A'
+      };
+    }
+
+    // Calculate statistics
+    const distances = [];
+    const paces = [];
+    const cadences = [];
+
+    runs.forEach(run => {
+      // Distance (column B, index 1)
+      const distance = parseFloat(run[1]);
+      if (!isNaN(distance)) distances.push(distance);
+
+      // Pace (column D, index 3) - extract numeric part
+      const pace = run[3];
+      if (pace) {
+        const paceMatch = pace.match(/[\d.]+/);
+        if (paceMatch) paces.push(parseFloat(paceMatch[0]));
+      }
+
+      // Cadence (column E, index 4) - extract numeric part
+      const cadence = run[4];
+      if (cadence) {
+        const cadenceMatch = cadence.match(/[\d.]+/);
+        if (cadenceMatch) cadences.push(parseFloat(cadenceMatch[0]));
+      }
+    });
+
+    return {
+      totalDistance: distances.reduce((a, b) => a + b, 0).toFixed(1),
+      totalRuns: runs.length,
+      avgPace: paces.length > 0 ? (paces.reduce((a, b) => a + b, 0) / paces.length).toFixed(2) : 'N/A',
+      avgCadence: cadences.length > 0 ? Math.round(cadences.reduce((a, b) => a + b, 0) / cadences.length) : 'N/A'
+    };
+  } catch (error) {
+    console.error('Error fetching run stats:', error);
+    throw error;
+  }
+}
