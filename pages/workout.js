@@ -84,26 +84,28 @@ export default function Workout() {
   };
 
   const isToday = (day) => {
-    const today = new Date();
-    const checkDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    return checkDate.toDateString() === today.toDateString();
+    const now = new Date();
+    const malaysiaNow = new Date(
+      now.getTime() + now.getTimezoneOffset() * 60000 + 8 * 60 * 60000
+    );
+    const checkUtc = Date.UTC(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    const malaysiaCheck = new Date(checkUtc + 8 * 60 * 60000);
+    return malaysiaCheck.toDateString() === malaysiaNow.toDateString();
   };
 
-  const formatDateKey = (year, month, day) => {
-    return [
-      year,
-      String(month + 1).padStart(2, '0'),
-      String(day).padStart(2, '0'),
-    ].join('-');
+  const toMalaysiaDateKey = (year, month, day) => {
+    const utc = Date.UTC(year, month, day);
+    const malaysia = new Date(utc + 8 * 60 * 60000);
+    return malaysia.toISOString().split('T')[0];
   };
 
   const hasWorkout = (day) => {
-    const dateStr = formatDateKey(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    const dateStr = toMalaysiaDateKey(currentMonth.getFullYear(), currentMonth.getMonth(), day);
     return workoutDates.includes(dateStr);
   };
 
   const hasRun = (day) => {
-    const dateStr = formatDateKey(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    const dateStr = toMalaysiaDateKey(currentMonth.getFullYear(), currentMonth.getMonth(), day);
     return runDates.includes(dateStr);
   };
 

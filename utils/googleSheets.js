@@ -681,6 +681,23 @@ export async function getDeficitHistory(limit = 90) {
 }
 
 // Get calendar activities (workout and run dates)
+const TARGET_TIMEZONE_OFFSET_MINUTES = 8 * 60; // Malaysia (UTC+8)
+
+const parseToMalaysiaDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  const utc = parsed.getTime() + parsed.getTimezoneOffset() * 60000;
+  const malaysia = utc + TARGET_TIMEZONE_OFFSET_MINUTES * 60000;
+  return new Date(malaysia);
+};
+
 const formatDateKey = (date) => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
     return null;
@@ -724,7 +741,7 @@ export async function getCalendarActivities() {
         if (session && session.trim() !== '') {
           // Parse date from session name (e.g., "Oct 28, 2025, 12:46 AM")
           try {
-            const date = new Date(session);
+            const date = parseToMalaysiaDate(session);
             const dateStr = formatDateKey(date);
             if (dateStr) {
               if (!workoutDates.includes(dateStr)) {
@@ -749,7 +766,7 @@ export async function getCalendarActivities() {
       runSessions.forEach(row => {
         if (row[0]) {
           try {
-            const date = new Date(row[0]);
+            const date = parseToMalaysiaDate(row[0]);
             const dateStr = formatDateKey(date);
             if (dateStr) {
               if (!runDates.includes(dateStr)) {
