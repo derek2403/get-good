@@ -46,7 +46,8 @@ export default async function handler(req, res) {
     'Given a photo of food encoded as base64, identify the most likely dish and estimate calories (kcal), protein (g), carbs (g), and fat (g).',
     'Respond with strict JSON matching the schema: {"name": string, "calories": number, "protein": number, "carbs": number, "fat": number}.',
     'If multiple foods are visible, pick the dominant portion and include everything visible (sauces, sides).',
-    'If unsure, make the best reasonable estimate and still return numbers.',
+    'Always err on the higher side: assume generous portion sizes, include toppings/sauces, and when uncertain choose the upper end of a plausible range rather than the minimum.',
+    'Round nutrients to a single decimal place and ensure all numbers are non-negative.',
   ].join(' ');
 
   const imageDataUrl = `data:${mimeType || 'image/jpeg'};base64,${imageBase64}`;
