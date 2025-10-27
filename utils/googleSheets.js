@@ -434,6 +434,212 @@ export async function getRunStats() {
   }
 }
 
+// Get today's meals from Food sheet
+export async function getTodaysMeals() {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetName = 'Food';
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Get all data from Food sheet
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!A:ZZ`,
+    });
+
+    const rows = response.data.values || [];
+    
+    // Find the row for today's date
+    let todayRowIndex = -1;
+    for (let i = 1; i < rows.length; i++) { // Start from 1 to skip header
+      if (rows[i] && rows[i][0] === today) {
+        todayRowIndex = i;
+        break;
+      }
+    }
+
+    if (todayRowIndex === -1) {
+      return { date: today, meals: [] };
+    }
+
+    // Get all meals from today's row (skip column A which is the date)
+    const meals = [];
+    const todayRow = rows[todayRowIndex];
+    for (let i = 1; i < todayRow.length; i++) {
+      if (todayRow[i] && todayRow[i].trim() !== '') {
+        const parts = todayRow[i].split('/');
+        if (parts.length === 5) {
+          meals.push({
+            name: parts[0],
+            calories: parseFloat(parts[1]) || 0,
+            protein: parseFloat(parts[2]) || 0,
+            carbs: parseFloat(parts[3]) || 0,
+            fat: parseFloat(parts[4]) || 0,
+          });
+        }
+      }
+    }
+
+    return { date: today, meals };
+  } catch (error) {
+    console.error('Error fetching today\'s meals:', error);
+    throw error;
+  }
+}
+
+// Add a meal to today's food log
+export async function addMeal(mealData) {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetName = 'Food';
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Get all data from Food sheet
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!A:ZZ`,
+    });
+
+    const rows = response.data.values || [];
+    
+    // Find the row for today's date
+    let todayRowIndex = -1;
+    for (let i = 1; i < rows.length; i++) { // Start from 1 to skip header
+      if (rows[i] && rows[i][0] === today) {
+        todayRowIndex = i;
+        break;
+      }
+    }
+
+    // Format meal data: foodname/kcal/protein/carbs/fat
+    const mealString = `${mealData.name}/${mealData.calories}/${mealData.protein}/${mealData.carbs}/${mealData.fat}`;
+
+    if (todayRowIndex === -1) {
+      // No entry for today, create new row
+      const newRowIndex = rows.length + 1;
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: `${sheetName}!A${newRowIndex}`,
+        valueInputOption: 'RAW',
+        resource: {
+          values: [[today, mealString]],
+        },
+      });
+    } else {
+      // Entry exists, append to next column
+      const todayRow = rows[todayRowIndex];
+      const nextColumnIndex = todayRow.length;
+      const columnLetter = String.fromCharCode(65 + nextColumnIndex); // A=65, B=66, etc.
+      const cellAddress = `${sheetName}!${columnLetter}${todayRowIndex + 1}`;
+
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: cellAddress,
+        valueInputOption: 'RAW',
+        resource: {
+          values: [[mealString]],
+        },
+      });
+    }
+
+    // Update deficit sheet after adding meal
+    await updateDeficit();
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error adding meal:', error);
+    throw error;
+  }
+}
+
+// Update deficit sheet with today's calories and deficit
+export async function updateDeficit() {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+
+  try {
+    const today = new Date().toISOString().split('T')[0];
+
+    // Get today's total calories from Food sheet
+    const mealsData = await getTodaysMeals();
+    const totalCalories = mealsData.meals.reduce((sum, meal) => sum + (meal.calories || 0), 0);
+
+    // Get TDEE from Profile sheet
+    let tdee = 2000; // Default fallback
+    try {
+      const profileResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Profile!D:F',
+      });
+      
+      const profileRows = profileResponse.data.values || [];
+      // Find the most recent TDEE entry
+      if (profileRows.length > 1) {
+        for (let i = profileRows.length - 1; i >= 1; i--) {
+          if (profileRows[i] && profileRows[i][2]) {
+            tdee = parseFloat(profileRows[i][2]) || 2000;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.log('Could not fetch TDEE, using default:', e);
+    }
+
+    // Calculate deficit (positive = deficit, negative = surplus)
+    const deficit = tdee - totalCalories;
+
+    // Get all data from Deficit sheet
+    const deficitResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Deficit!A:C',
+    });
+
+    const deficitRows = deficitResponse.data.values || [];
+    
+    // Find the row for today's date
+    let todayRowIndex = -1;
+    for (let i = 1; i < deficitRows.length; i++) { // Start from 1 to skip header
+      if (deficitRows[i] && deficitRows[i][0] === today) {
+        todayRowIndex = i;
+        break;
+      }
+    }
+
+    if (todayRowIndex === -1) {
+      // No entry for today, create new row
+      const newRowIndex = deficitRows.length + 1;
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: `Deficit!A${newRowIndex}`,
+        valueInputOption: 'RAW',
+        resource: {
+          values: [[today, totalCalories, deficit]],
+        },
+      });
+    } else {
+      // Entry exists, update it
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `Deficit!B${todayRowIndex + 1}:C${todayRowIndex + 1}`,
+        valueInputOption: 'RAW',
+        resource: {
+          values: [[totalCalories, deficit]],
+        },
+      });
+    }
+
+    return { success: true, totalCalories, deficit, tdee };
+  } catch (error) {
+    console.error('Error updating deficit:', error);
+    throw error;
+  }
+}
+
 // Get calendar activities (workout and run dates)
 export async function getCalendarActivities() {
   const sheets = await getGoogleSheetsClient();
