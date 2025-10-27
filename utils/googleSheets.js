@@ -640,6 +640,46 @@ export async function updateDeficit() {
   }
 }
 
+export async function getDeficitHistory(limit = 90) {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Deficit!A2:C500',
+    });
+
+    const rows = response.data.values || [];
+
+    const history = rows
+      .map((row) => {
+        const [date, calories, deficit] = row;
+        const parsedDeficit = parseFloat(deficit);
+        const parsedCalories = parseFloat(calories);
+        if (!date) {
+          return null;
+        }
+        return {
+          date,
+          totalCalories: Number.isFinite(parsedCalories) ? parsedCalories : 0,
+          deficit: Number.isFinite(parsedDeficit) ? parsedDeficit : 0,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    if (limit && Number.isFinite(limit) && limit > 0) {
+      return history.slice(-limit);
+    }
+
+    return history;
+  } catch (error) {
+    console.error('Error fetching deficit history:', error);
+    throw error;
+  }
+}
+
 // Get calendar activities (workout and run dates)
 export async function getCalendarActivities() {
   const sheets = await getGoogleSheetsClient();
