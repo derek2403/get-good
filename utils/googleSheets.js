@@ -98,3 +98,77 @@ export async function getAllSheetNames() {
   }
 }
 
+// Run tracking functions (row-based storage)
+export async function getRunSessions() {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetName = 'Run';
+
+  try {
+    // Get all run data (headers and sessions)
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!A1:E1000`,
+    });
+
+    const rows = response.data.values || [];
+    
+    if (rows.length === 0) {
+      return { headers: [], sessions: [] };
+    }
+
+    // First row is headers
+    const headers = rows[0];
+    const sessions = rows.slice(1);
+
+    return {
+      headers,
+      sessions,
+    };
+  } catch (error) {
+    console.error('Error fetching run sessions:', error);
+    throw error;
+  }
+}
+
+export async function saveRunSession(sessionData) {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetName = 'Run';
+
+  try {
+    // Find the next available row
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!A:A`,
+    });
+
+    const rows = response.data.values || [];
+    const nextRow = rows.length + 1;
+
+    // Prepare data: [Session, Distance, Duration, Pace, Cadence]
+    const values = [[
+      sessionData.session,
+      sessionData.distance,
+      sessionData.duration,
+      sessionData.pace,
+      sessionData.cadence,
+    ]];
+
+    // Write the data (use RAW to prevent auto-formatting)
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${sheetName}!A${nextRow}:E${nextRow}`,
+      valueInputOption: 'RAW',
+      resource: {
+        values,
+      },
+    });
+
+    return { success: true, row: nextRow };
+  } catch (error) {
+    console.error('Error saving run session:', error);
+    throw error;
+  }
+}
+
