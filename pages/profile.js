@@ -32,21 +32,6 @@ export default function Profile() {
       if (data.profile) {
         setProfileData(data.profile);
         setWeightHistory(data.weightHistory || []);
-        
-        // Check if weight has been logged today
-        const today = new Date().toLocaleDateString('en-US', {
-          month: '2-digit',
-          day: '2-digit',
-          year: 'numeric'
-        });
-        
-        const hasLoggedToday = data.weightHistory?.some(entry => {
-          return entry[0] === today;
-        });
-        
-        if (!hasLoggedToday) {
-          setShowPopup(true);
-        }
       }
     } catch (err) {
       setError('Failed to load profile data. Make sure you have a "Profile" sheet in your Google Sheets.');
