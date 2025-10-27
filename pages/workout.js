@@ -297,7 +297,7 @@ export default function Workout() {
           <div className="mb-6">
             {step === 'start' ? (
               <>
-                <h1 className="text-3xl font-bold mb-2 text-gray-900">{getGreeting()}! 👋</h1>
+                <h1 className="text-3xl font-bold mb-2 text-gray-900">👋 {getGreeting()}!</h1>
                 <p className="text-gray-600">What are you doing today?</p>
               </>
             ) : (

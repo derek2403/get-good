@@ -236,8 +236,8 @@ export default function Profile() {
         <div className="container mx-auto px-4 py-6 max-w-md">
           {/* Header */}
           <div className="mb-6">
-            <h1 className="text-3xl font-bold mb-2 text-gray-900">{getGreeting()}! 👤</h1>
-            <p className="text-gray-600">Your fitness journey</p>
+            <h1 className="text-3xl font-bold mb-2 text-gray-900">👤 {getGreeting()}!</h1>
+            <p className="text-gray-600">Your fitness journey starts here</p>
           </div>
 
           {error && (
