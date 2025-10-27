@@ -307,10 +307,6 @@ export async function getWorkoutExerciseStats(sheetName) {
     });
 
     const sessionData = dataResponse.data.values || [];
-    
-    console.log('Sheet:', sheetName);
-    console.log('Exercises:', exercises);
-    console.log('Session Data:', sessionData);
 
     // Calculate stats for each exercise
     const exerciseStats = exercises.map((exerciseName, exerciseIndex) => {
@@ -320,8 +316,6 @@ export async function getWorkoutExerciseStats(sheetName) {
       // Each row contains cells from different sessions (columns B, C, D, etc.)
       const exerciseRow = sessionData[exerciseIndex];
       
-      console.log(`Exercise: ${exerciseName}, Row:`, exerciseRow);
-      
       if (exerciseRow && Array.isArray(exerciseRow)) {
         exerciseRow.forEach(cell => {
           if (cell && typeof cell === 'string' && cell.trim() !== '') {
@@ -330,7 +324,6 @@ export async function getWorkoutExerciseStats(sheetName) {
               const weight = parseFloat(parts[0]) || 0;
               const sets = parseFloat(parts[1]) || 0;
               const reps = parseFloat(parts[2]) || 0;
-              console.log(`  Cell: ${cell} -> Weight: ${weight}, Sets: ${sets}, Reps: ${reps}`);
               if (weight > 0 || sets > 0 || reps > 0) {
                 allData.push({ weight, sets, reps });
               }
@@ -338,8 +331,6 @@ export async function getWorkoutExerciseStats(sheetName) {
           }
         });
       }
-      
-      console.log(`  All Data for ${exerciseName}:`, allData);
 
       if (allData.length === 0) {
         return {
@@ -361,7 +352,7 @@ export async function getWorkoutExerciseStats(sheetName) {
       const sets = allData.map(d => d.sets).filter(s => s > 0);
       const reps = allData.map(d => d.reps).filter(r => r > 0);
 
-      const stats = {
+      return {
         exercise: exerciseName,
         maxWeight: weights.length > 0 ? Math.max(...weights) : 0,
         minWeight: weights.length > 0 ? Math.min(...weights) : 0,
@@ -374,9 +365,6 @@ export async function getWorkoutExerciseStats(sheetName) {
         avgReps: reps.length > 0 ? Math.round(reps.reduce((a, b) => a + b, 0) / reps.length) : 0,
         totalSessions: allData.length
       };
-      
-      console.log(`  Stats for ${exerciseName}:`, stats);
-      return stats;
     });
 
     return exerciseStats;
@@ -442,6 +430,88 @@ export async function getRunStats() {
     };
   } catch (error) {
     console.error('Error fetching run stats:', error);
+    throw error;
+  }
+}
+
+// Get calendar activities (workout and run dates)
+export async function getCalendarActivities() {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+
+  try {
+    // Get all sheet names
+    const sheetNamesResponse = await sheets.spreadsheets.get({
+      spreadsheetId,
+    });
+
+    const allSheets = sheetNamesResponse.data.sheets.map((sheet) => sheet.properties.title);
+    const workoutSheets = allSheets.filter(name => 
+      !['Run', 'Profile'].includes(name) && 
+      (name.toLowerCase().includes('push') || 
+       name.toLowerCase().includes('pull') || 
+       name.toLowerCase().includes('leg'))
+    );
+
+    const workoutDates = [];
+    const runDates = [];
+
+    // Fetch workout dates from workout sheets
+    for (const sheetName of workoutSheets) {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${sheetName}!B1:ZZ1`,
+      });
+
+      const sessions = response.data.values?.[0] || [];
+      sessions.forEach(session => {
+        if (session && session.trim() !== '') {
+          // Parse date from session name (e.g., "Oct 28, 2025, 12:46 AM")
+          try {
+            const date = new Date(session);
+            if (!isNaN(date.getTime())) {
+              const dateStr = date.toISOString().split('T')[0];
+              if (!workoutDates.includes(dateStr)) {
+                workoutDates.push(dateStr);
+              }
+            }
+          } catch (e) {
+            // Ignore invalid dates
+          }
+        }
+      });
+    }
+
+    // Fetch run dates from Run sheet
+    try {
+      const runResponse = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'Run!A2:A1000',
+      });
+
+      const runSessions = runResponse.data.values || [];
+      runSessions.forEach(row => {
+        if (row[0]) {
+          try {
+            const date = new Date(row[0]);
+            if (!isNaN(date.getTime())) {
+              const dateStr = date.toISOString().split('T')[0];
+              if (!runDates.includes(dateStr)) {
+                runDates.push(dateStr);
+              }
+            }
+          } catch (e) {
+            // Ignore invalid dates
+          }
+        }
+      });
+    } catch (e) {
+      console.log('No Run sheet or error fetching runs');
+    }
+
+    return { workoutDates, runDates };
+  } catch (error) {
+    console.error('Error fetching calendar activities:', error);
     throw error;
   }
 }

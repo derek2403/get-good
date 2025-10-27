@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
-import { Dumbbell, Activity, ChevronRight, Check, Home, Calendar } from 'lucide-react';
+import { Dumbbell, Activity, ChevronRight, Check, Home, Calendar, ChevronLeft } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 
 export default function Workout() {
@@ -35,10 +35,16 @@ export default function Workout() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  
+  // Calendar states
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [workoutDates, setWorkoutDates] = useState([]);
+  const [runDates, setRunDates] = useState([]);
 
-  // Load sheets on mount
+  // Load sheets and activities on mount
   useEffect(() => {
     loadSheets();
+    loadActivities();
   }, []);
 
   const loadSheets = async () => {
@@ -53,6 +59,54 @@ export default function Workout() {
       setError('Failed to load workout sheets');
       console.error(err);
     }
+  };
+
+  const loadActivities = async () => {
+    try {
+      const response = await fetch('/api/calendar/activities');
+      const data = await response.json();
+      if (data.workoutDates) setWorkoutDates(data.workoutDates);
+      if (data.runDates) setRunDates(data.runDates);
+    } catch (err) {
+      console.error('Failed to load activities:', err);
+    }
+  };
+
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDayOfWeek = firstDay.getDay();
+    
+    return { daysInMonth, startingDayOfWeek, year, month };
+  };
+
+  const isToday = (day) => {
+    const today = new Date();
+    const checkDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    return checkDate.toDateString() === today.toDateString();
+  };
+
+  const hasWorkout = (day) => {
+    const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
+      .toISOString().split('T')[0];
+    return workoutDates.includes(dateStr);
+  };
+
+  const hasRun = (day) => {
+    const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
+      .toISOString().split('T')[0];
+    return runDates.includes(dateStr);
+  };
+
+  const previousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
   };
 
   const generateSessionName = () => {
@@ -268,43 +322,137 @@ export default function Workout() {
 
           {/* Step: Start - Choose Activity */}
           {step === 'start' && (
-            <div className="space-y-4">
-              <button
-                onClick={() => handleActivitySelect('gym')}
-                className="w-full bg-white border-2 border-gray-200 hover:border-blue-500 rounded-xl p-6 transition shadow-sm hover:shadow-md group"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-blue-100 p-3 rounded-lg group-hover:bg-blue-500 transition">
-                      <Dumbbell className="text-blue-600 group-hover:text-white" size={24} />
+            <>
+              <div className="space-y-4 mb-6">
+                <button
+                  onClick={() => handleActivitySelect('gym')}
+                  className="w-full bg-white border-2 border-gray-200 hover:border-blue-500 rounded-xl p-6 transition shadow-sm hover:shadow-md group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-blue-100 p-3 rounded-lg group-hover:bg-blue-500 transition">
+                        <Dumbbell className="text-blue-600 group-hover:text-white" size={24} />
+                      </div>
+                      <div className="text-left">
+                        <h3 className="text-xl font-semibold text-gray-900">Gym Workout</h3>
+                        <p className="text-sm text-gray-500">Track your strength training</p>
+                      </div>
                     </div>
-                    <div className="text-left">
-                      <h3 className="text-xl font-semibold text-gray-900">Gym Workout</h3>
-                      <p className="text-sm text-gray-500">Track your strength training</p>
-                    </div>
+                    <ChevronRight className="text-gray-400 group-hover:text-blue-500" size={24} />
                   </div>
-                  <ChevronRight className="text-gray-400 group-hover:text-blue-500" size={24} />
-                </div>
-              </button>
+                </button>
 
-              <button
-                onClick={() => handleActivitySelect('run')}
-                className="w-full bg-white border-2 border-gray-200 hover:border-cyan-500 rounded-xl p-6 transition shadow-sm hover:shadow-md group"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-cyan-100 p-3 rounded-lg group-hover:bg-cyan-500 transition">
-                      <Activity className="text-cyan-600 group-hover:text-white" size={24} />
+                <button
+                  onClick={() => handleActivitySelect('run')}
+                  className="w-full bg-white border-2 border-gray-200 hover:border-cyan-500 rounded-xl p-6 transition shadow-sm hover:shadow-md group"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-cyan-100 p-3 rounded-lg group-hover:bg-cyan-500 transition">
+                        <Activity className="text-cyan-600 group-hover:text-white" size={24} />
+                      </div>
+                      <div className="text-left">
+                        <h3 className="text-xl font-semibold text-gray-900">Run</h3>
+                        <p className="text-sm text-gray-500">Log your running session</p>
+                      </div>
                     </div>
-                    <div className="text-left">
-                      <h3 className="text-xl font-semibold text-gray-900">Run</h3>
-                      <p className="text-sm text-gray-500">Log your running session</p>
-                    </div>
+                    <ChevronRight className="text-gray-400 group-hover:text-cyan-500" size={24} />
                   </div>
-                  <ChevronRight className="text-gray-400 group-hover:text-cyan-500" size={24} />
+                </button>
+              </div>
+
+              {/* Activity Calendar */}
+              <div className="bg-white rounded-xl p-5 shadow-md border border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <button
+                    onClick={previousMonth}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition"
+                  >
+                    <ChevronLeft size={20} className="text-gray-600" />
+                  </button>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                  </h3>
+                  <button
+                    onClick={nextMonth}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition"
+                  >
+                    <ChevronRight size={20} className="text-gray-600" />
+                  </button>
                 </div>
-              </button>
-            </div>
+
+                {/* Calendar Grid */}
+                <div className="grid grid-cols-7 gap-1">
+                  {/* Day headers */}
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                    <div key={day} className="text-center text-xs font-semibold text-gray-500 py-2">
+                      {day}
+                    </div>
+                  ))}
+
+                  {/* Calendar days */}
+                  {(() => {
+                    const { daysInMonth, startingDayOfWeek } = getDaysInMonth(currentMonth);
+                    const days = [];
+
+                    // Empty cells before first day
+                    for (let i = 0; i < startingDayOfWeek; i++) {
+                      days.push(<div key={`empty-${i}`} className="aspect-square" />);
+                    }
+
+                    // Actual days
+                    for (let day = 1; day <= daysInMonth; day++) {
+                      const today = isToday(day);
+                      const workout = hasWorkout(day);
+                      const run = hasRun(day);
+
+                      days.push(
+                        <div
+                          key={day}
+                          className={`aspect-square flex items-center justify-center relative rounded-lg transition ${
+                            today ? 'bg-gray-100' : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <span
+                            className={`text-sm ${
+                              today ? 'font-bold text-gray-900' : 'text-gray-700'
+                            } ${workout ? 'relative' : ''}`}
+                            style={workout ? { 
+                              border: '2px solid #10b981', 
+                              borderRadius: '50%',
+                              width: '28px',
+                              height: '28px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            } : {}}
+                          >
+                            {day}
+                          </span>
+                          {run && (
+                            <div className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return days;
+                  })()}
+                </div>
+
+                {/* Legend */}
+                <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 border-2 border-green-500 rounded-full" />
+                    <span className="text-xs text-gray-600">Gym</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-red-500 rounded-full" />
+                    <span className="text-xs text-gray-600">Run</span>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Step: Select Workout Type */}

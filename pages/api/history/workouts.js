@@ -16,7 +16,6 @@ export default async function handler(req, res) {
     if (sheet) {
       // Get detailed stats for a specific workout sheet
       const exerciseStats = await getWorkoutExerciseStats(sheet);
-      console.log('Sending exercise stats:', exerciseStats);
       res.status(200).json({ exerciseStats });
     } else if (category) {
       // Get list of workout sheets for a category

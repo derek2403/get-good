@@ -91,14 +91,9 @@ export default function Profile() {
       }
       
       const data = await response.json();
-      console.log('Received exercise stats:', data);
-      console.log('Exercise stats array:', data.exerciseStats);
       
       if (data.exerciseStats && Array.isArray(data.exerciseStats)) {
-        console.log('Setting exercise stats, count:', data.exerciseStats.length);
         setExerciseStats([...data.exerciseStats]); // Force new array reference
-      } else {
-        console.error('Invalid exercise stats data:', data);
       }
     } catch (err) {
       console.error('Failed to load exercise stats:', err);
