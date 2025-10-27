@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { Dumbbell, Activity, ChevronRight, Check, Home, Calendar } from 'lucide-react';
+import BottomNav from '../components/BottomNav';
 
 export default function Workout() {
   // Step flow: 'start' -> 'select-workout-type' or 'run-form' -> 'exercise-list' -> 'exercise-input'
@@ -228,7 +229,7 @@ export default function Workout() {
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
       </Head>
 
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 pb-20">
         <div className="container mx-auto px-4 py-6 max-w-md">
           {/* Header */}
           <div className="mb-6">
@@ -512,6 +513,8 @@ export default function Workout() {
           )}
         </div>
       </div>
+
+      <BottomNav />
     </>
   );
 }

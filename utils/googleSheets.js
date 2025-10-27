@@ -186,3 +186,80 @@ export async function saveRunSession(sessionData) {
   }
 }
 
+// Profile tracking functions
+export async function getProfileData() {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetName = 'Profile';
+
+  try {
+    // Get profile data: Name, DOB, Goal, Height
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!A1:F4`,
+    });
+
+    const rows = response.data.values || [];
+    
+    // Parse the data
+    const profile = {
+      name: rows[0]?.[1] || '',
+      dob: rows[1]?.[1] || '',
+      goal: rows[2]?.[1] || '',
+      height: rows[3]?.[1] || '',
+    };
+
+    // Get weight history (columns D, E, F)
+    const weightResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!D1:F1000`,
+    });
+
+    const weightRows = weightResponse.data.values || [];
+    const weightHistory = weightRows.slice(1).filter(row => row[0]); // Skip header, filter empty rows
+
+    return {
+      profile,
+      weightHistory,
+    };
+  } catch (error) {
+    console.error('Error fetching profile data:', error);
+    throw error;
+  }
+}
+
+export async function saveWeightEntry(date, weight, tdee) {
+  const sheets = await getGoogleSheetsClient();
+  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const sheetName = 'Profile';
+
+  try {
+    // Find the next available row in columns D, E, F
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!D:D`,
+    });
+
+    const rows = response.data.values || [];
+    const nextRow = rows.length + 1;
+
+    // Prepare data: [Date, Weight, TDEE]
+    const values = [[date, weight, tdee]];
+
+    // Write the data (use RAW to prevent auto-formatting)
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${sheetName}!D${nextRow}:F${nextRow}`,
+      valueInputOption: 'RAW',
+      resource: {
+        values,
+      },
+    });
+
+    return { success: true, row: nextRow };
+  } catch (error) {
+    console.error('Error saving weight entry:', error);
+    throw error;
+  }
+}
+
