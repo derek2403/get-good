@@ -1,4 +1,4 @@
-const CACHE_NAME = 'get-good-cache-v1';
+const CACHE_NAME = 'get-good-cache-v2';
 const OFFLINE_URLS = ['/'];
 
 self.addEventListener('install', (event) => {

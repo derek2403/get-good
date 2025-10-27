@@ -89,15 +89,21 @@ export default function Workout() {
     return checkDate.toDateString() === today.toDateString();
   };
 
+  const formatDateKey = (year, month, day) => {
+    return [
+      year,
+      String(month + 1).padStart(2, '0'),
+      String(day).padStart(2, '0'),
+    ].join('-');
+  };
+
   const hasWorkout = (day) => {
-    const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
-      .toISOString().split('T')[0];
+    const dateStr = formatDateKey(currentMonth.getFullYear(), currentMonth.getMonth(), day);
     return workoutDates.includes(dateStr);
   };
 
   const hasRun = (day) => {
-    const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
-      .toISOString().split('T')[0];
+    const dateStr = formatDateKey(currentMonth.getFullYear(), currentMonth.getMonth(), day);
     return runDates.includes(dateStr);
   };
 

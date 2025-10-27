@@ -681,6 +681,16 @@ export async function getDeficitHistory(limit = 90) {
 }
 
 // Get calendar activities (workout and run dates)
+const formatDateKey = (date) => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export async function getCalendarActivities() {
   const sheets = await getGoogleSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
@@ -715,8 +725,8 @@ export async function getCalendarActivities() {
           // Parse date from session name (e.g., "Oct 28, 2025, 12:46 AM")
           try {
             const date = new Date(session);
-            if (!isNaN(date.getTime())) {
-              const dateStr = date.toISOString().split('T')[0];
+            const dateStr = formatDateKey(date);
+            if (dateStr) {
               if (!workoutDates.includes(dateStr)) {
                 workoutDates.push(dateStr);
               }
@@ -740,8 +750,8 @@ export async function getCalendarActivities() {
         if (row[0]) {
           try {
             const date = new Date(row[0]);
-            if (!isNaN(date.getTime())) {
-              const dateStr = date.toISOString().split('T')[0];
+            const dateStr = formatDateKey(date);
+            if (dateStr) {
               if (!runDates.includes(dateStr)) {
                 runDates.push(dateStr);
               }
