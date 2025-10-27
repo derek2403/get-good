@@ -44,19 +44,33 @@ export async function getWorkouts(sheetName) {
   }
 }
 
-export async function saveWorkoutSession(sheetName, sessionName, workoutData) {
+export async function saveWorkoutSession(sheetName, sessionName, workoutData, existingColumn = null) {
   const sheets = await getGoogleSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
 
   try {
-    // First, find the next available column (starting from B)
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: `${sheetName}!B1:ZZ1`,
-    });
+    let targetColumn = existingColumn;
 
-    const headers = response.data.values?.[0] || [];
-    const nextColumn = String.fromCharCode(66 + headers.length); // B is 66 in ASCII
+    // If no existing column, find the column with matching session name or create new
+    if (!targetColumn) {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${sheetName}!B1:ZZ1`,
+      });
+
+      const headers = response.data.values?.[0] || [];
+      
+      // Look for existing column with same session name
+      const existingIndex = headers.findIndex(header => header === sessionName);
+      
+      if (existingIndex !== -1) {
+        // Use existing column
+        targetColumn = String.fromCharCode(66 + existingIndex);
+      } else {
+        // Create new column
+        targetColumn = String.fromCharCode(66 + headers.length);
+      }
+    }
     
     // Prepare the data to write
     const values = [
@@ -67,14 +81,14 @@ export async function saveWorkoutSession(sheetName, sessionName, workoutData) {
     // Write the data (use RAW to prevent date auto-formatting)
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `${sheetName}!${nextColumn}1:${nextColumn}${values.length}`,
+      range: `${sheetName}!${targetColumn}1:${targetColumn}${values.length}`,
       valueInputOption: 'RAW',
       resource: {
         values,
       },
     });
 
-    return { success: true, column: nextColumn };
+    return { success: true, column: targetColumn };
   } catch (error) {
     console.error('Error saving workout session:', error);
     throw error;

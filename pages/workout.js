@@ -1,21 +1,27 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
+import { Dumbbell, Activity, ChevronRight, Check, Home, Calendar } from 'lucide-react';
 
 export default function Workout() {
-  // Mode: 'workout' or 'run'
-  const [mode, setMode] = useState('workout');
+  // Step flow: 'start' -> 'select-workout-type' or 'run-form' -> 'exercise-list' -> 'exercise-input'
+  const [step, setStep] = useState('start');
+  const [activityType, setActivityType] = useState(''); // 'gym' or 'run'
   
   // Workout mode states
   const [availableSheets, setAvailableSheets] = useState([]);
   const [selectedSheet, setSelectedSheet] = useState('');
   const [workouts, setWorkouts] = useState([]);
-  const [sessionStarted, setSessionStarted] = useState(false);
   const [sessionName, setSessionName] = useState('');
-  const [workoutInputs, setWorkoutInputs] = useState({});
+  const [sessionColumn, setSessionColumn] = useState(null);
+  const [selectedExerciseIndex, setSelectedExerciseIndex] = useState(null);
+  const [exerciseData, setExerciseData] = useState({
+    weight: '',
+    sets: '',
+    reps: '',
+  });
+  const [workoutDataStore, setWorkoutDataStore] = useState({});
   
   // Run mode states
-  const [runSessions, setRunSessions] = useState([]);
-  const [showRunForm, setShowRunForm] = useState(false);
   const [runData, setRunData] = useState({
     session: '',
     distance: '',
@@ -29,43 +35,22 @@ export default function Workout() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // Load data on mount and mode change
+  // Load sheets on mount
   useEffect(() => {
-    if (mode === 'workout') {
-      loadSheets();
-    } else if (mode === 'run') {
-      loadRunSessions();
-    }
-  }, [mode]);
+    loadSheets();
+  }, []);
 
   const loadSheets = async () => {
     try {
       const response = await fetch('/api/workout/get-sheets');
       const data = await response.json();
       if (data.sheetNames) {
-        // Filter out 'Run' sheet from workout options
         const workoutSheets = data.sheetNames.filter(sheet => sheet !== 'Run');
         setAvailableSheets(workoutSheets);
       }
     } catch (err) {
       setError('Failed to load workout sheets');
       console.error(err);
-    }
-  };
-
-  const loadRunSessions = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/run/run');
-      const data = await response.json();
-      if (data.sessions) {
-        setRunSessions(data.sessions);
-      }
-    } catch (err) {
-      setError('Failed to load run sessions');
-      console.error(err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -82,31 +67,36 @@ export default function Workout() {
     return now.toLocaleString('en-US', options);
   };
 
-  // Workout mode functions
-  const startSession = async () => {
-    if (!selectedSheet) {
-      setError('Please select a workout type');
-      return;
-    }
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 18) return 'Good Afternoon';
+    return 'Good Evening';
+  };
 
+  const handleActivitySelect = (type) => {
+    setActivityType(type);
+    setSessionName(generateSessionName());
+    if (type === 'gym') {
+      setStep('select-workout-type');
+    } else {
+      setRunData({ ...runData, session: generateSessionName() });
+      setStep('run-form');
+    }
+  };
+
+  const handleWorkoutTypeSelect = async (sheetName) => {
+    setSelectedSheet(sheetName);
     setLoading(true);
     setError('');
 
     try {
-      const response = await fetch(`/api/workout/get-workouts?sheetName=${selectedSheet}`);
+      const response = await fetch(`/api/workout/get-workouts?sheetName=${sheetName}`);
       const data = await response.json();
 
       if (data.workouts) {
         setWorkouts(data.workouts);
-        setSessionName(generateSessionName());
-        setSessionStarted(true);
-        
-        // Initialize workout inputs
-        const inputs = {};
-        data.workouts.forEach((workout, index) => {
-          inputs[index] = { weight: '', sets: '', reps: '' };
-        });
-        setWorkoutInputs(inputs);
+        setStep('exercise-list');
       }
     } catch (err) {
       setError('Failed to load workouts');
@@ -116,32 +106,36 @@ export default function Workout() {
     }
   };
 
-  const handleInputChange = (index, field, value) => {
-    setWorkoutInputs({
-      ...workoutInputs,
-      [index]: {
-        ...workoutInputs[index],
-        [field]: value,
-      },
-    });
+  const handleExerciseClick = (index) => {
+    setSelectedExerciseIndex(index);
+    setExerciseData({ weight: '', sets: '', reps: '' });
+    setStep('exercise-input');
   };
 
-  const endSession = async () => {
+  const saveExercise = async () => {
+    if (!exerciseData.weight && !exerciseData.sets && !exerciseData.reps) {
+      setError('Please enter at least one value');
+      return;
+    }
+
     setLoading(true);
     setError('');
-    setSuccess('');
 
     try {
-      // Prepare workout data in the format: ["weight/sets/reps"]
+      // Update local workout data store
+      const updatedStore = {
+        ...workoutDataStore,
+        [selectedExerciseIndex]: `${exerciseData.weight || '0'}/${exerciseData.sets || '0'}/${exerciseData.reps || '0'}`
+      };
+      setWorkoutDataStore(updatedStore);
+
+      // Prepare workout data array with all exercises
       const workoutData = workouts.map((workout, index) => {
-        const input = workoutInputs[index];
-        if (input.weight || input.sets || input.reps) {
-          return [`${input.weight || '0'}/${input.sets || '0'}/${input.reps || '0'}`];
-        }
-        return [''];
+        return [updatedStore[index] || ''];
       });
 
-      const response = await fetch('/api/workout/save-session', {
+      // Save the entire session (this will update the same column if it exists)
+      const saveResponse = await fetch('/api/workout/save-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,66 +144,30 @@ export default function Workout() {
           sheetName: selectedSheet,
           sessionName,
           workoutData,
+          existingColumn: sessionColumn,
         }),
       });
 
-      const result = await response.json();
+      const result = await saveResponse.json();
 
       if (result.success) {
-        setSuccess('Workout session saved successfully!');
-        // Reset the form
+        // Store the column for future updates in this session
+        if (!sessionColumn) {
+          setSessionColumn(result.column);
+        }
+        
+        setSuccess('Exercise saved!');
         setTimeout(() => {
-          setSessionStarted(false);
-          setSelectedSheet('');
-          setWorkouts([]);
-          setWorkoutInputs({});
           setSuccess('');
-        }, 2000);
-      } else {
-        setError('Failed to save workout session');
+          setStep('exercise-list');
+        }, 1000);
       }
     } catch (err) {
-      setError('Failed to save workout session');
+      setError('Failed to save exercise');
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
-
-  const cancelSession = () => {
-    setSessionStarted(false);
-    setSelectedSheet('');
-    setWorkouts([]);
-    setWorkoutInputs({});
-    setError('');
-    setSuccess('');
-  };
-
-  // Run mode functions
-  const startNewRunSession = () => {
-    setRunData({
-      session: generateSessionName(),
-      distance: '',
-      duration: '',
-      pace: '',
-      cadence: '',
-    });
-    setShowRunForm(true);
-    setError('');
-    setSuccess('');
-  };
-
-  const cancelRunSession = () => {
-    setShowRunForm(false);
-    setRunData({
-      session: '',
-      distance: '',
-      duration: '',
-      pace: '',
-      cadence: '',
-    });
-    setError('');
-    setSuccess('');
   };
 
   const saveRunSession = async () => {
@@ -220,7 +178,6 @@ export default function Workout() {
 
     setLoading(true);
     setError('');
-    setSuccess('');
 
     try {
       const response = await fetch('/api/run/run', {
@@ -234,12 +191,9 @@ export default function Workout() {
       const result = await response.json();
 
       if (result.success) {
-        setSuccess('Run session saved successfully!');
-        // Reload sessions
-        await loadRunSessions();
-        // Reset form after short delay
+        setSuccess('Run session saved!');
         setTimeout(() => {
-          cancelRunSession();
+          resetToStart();
         }, 1500);
       } else {
         setError('Failed to save run session');
@@ -252,12 +206,18 @@ export default function Workout() {
     }
   };
 
-  const switchMode = (newMode) => {
-    setMode(newMode);
+  const resetToStart = () => {
+    setStep('start');
+    setActivityType('');
+    setSelectedSheet('');
+    setWorkouts([]);
+    setSessionColumn(null);
+    setSelectedExerciseIndex(null);
+    setExerciseData({ weight: '', sets: '', reps: '' });
+    setWorkoutDataStore({});
+    setRunData({ session: '', distance: '', duration: '', pace: '', cadence: '' });
     setError('');
     setSuccess('');
-    setSessionStarted(false);
-    setShowRunForm(false);
   };
 
   return (
@@ -265,288 +225,290 @@ export default function Workout() {
       <Head>
         <title>Fitness Tracker - Get Good</title>
         <meta name="description" content="Track your workouts and runs" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
       </Head>
 
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
-        <div className="container mx-auto px-4 py-8 max-w-6xl">
-          <h1 className="text-4xl font-bold mb-8 text-center bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-            Fitness Tracker
-          </h1>
-
-          {/* Mode Tabs */}
-          <div className="flex justify-center mb-8">
-            <div className="bg-gray-800 rounded-lg p-1 inline-flex">
-              <button
-                onClick={() => switchMode('workout')}
-                className={`px-6 py-2 rounded-md font-semibold transition ${
-                  mode === 'workout'
-                    ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                💪 Workout
-              </button>
-              <button
-                onClick={() => switchMode('run')}
-                className={`px-6 py-2 rounded-md font-semibold transition ${
-                  mode === 'run'
-                    ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                🏃 Run
-              </button>
-            </div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        <div className="container mx-auto px-4 py-6 max-w-md">
+          {/* Header */}
+          <div className="mb-6">
+            {step === 'start' ? (
+              <>
+                <h1 className="text-3xl font-bold mb-2 text-gray-900">{getGreeting()}! 👋</h1>
+                <p className="text-gray-600">What are you doing today?</p>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {activityType === 'gym' ? '💪 Gym' : '🏃 Run'}
+                </h1>
+                <button
+                  onClick={resetToStart}
+                  className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition"
+                >
+                  <Home size={20} />
+                </button>
+              </div>
+            )}
           </div>
 
+          {/* Error/Success Messages */}
           {error && (
-            <div className="bg-red-500 bg-opacity-20 border border-red-500 text-red-200 px-4 py-3 rounded mb-4">
+            <div className="bg-red-50 border-l-4 border-red-500 text-red-700 px-4 py-3 rounded mb-4">
               {error}
             </div>
           )}
 
           {success && (
-            <div className="bg-green-500 bg-opacity-20 border border-green-500 text-green-200 px-4 py-3 rounded mb-4">
+            <div className="bg-green-50 border-l-4 border-green-500 text-green-700 px-4 py-3 rounded mb-4">
               {success}
             </div>
           )}
 
-          {/* Workout Mode */}
-          {mode === 'workout' && (
-            <>
-              {!sessionStarted ? (
-                <div className="bg-gray-800 rounded-lg shadow-xl p-8">
-                  <h2 className="text-2xl font-semibold mb-6">Start New Workout Session</h2>
-                  
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium mb-2">Select Workout Type</label>
-                    <select
-                      value={selectedSheet}
-                      onChange={(e) => setSelectedSheet(e.target.value)}
-                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
-                    >
-                      <option value="">Choose a workout...</option>
-                      {availableSheets.map((sheet) => (
-                        <option key={sheet} value={sheet}>
-                          {sheet}
-                        </option>
-                      ))}
-                    </select>
+          {/* Step: Start - Choose Activity */}
+          {step === 'start' && (
+            <div className="space-y-4">
+              <button
+                onClick={() => handleActivitySelect('gym')}
+                className="w-full bg-white border-2 border-gray-200 hover:border-blue-500 rounded-xl p-6 transition shadow-sm hover:shadow-md group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-blue-100 p-3 rounded-lg group-hover:bg-blue-500 transition">
+                      <Dumbbell className="text-blue-600 group-hover:text-white" size={24} />
+                    </div>
+                    <div className="text-left">
+                      <h3 className="text-xl font-semibold text-gray-900">Gym Workout</h3>
+                      <p className="text-sm text-gray-500">Track your strength training</p>
+                    </div>
                   </div>
-
-                  <button
-                    onClick={startSession}
-                    disabled={loading || !selectedSheet}
-                    className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 disabled:cursor-not-allowed"
-                  >
-                    {loading ? 'Loading...' : 'Start Session'}
-                  </button>
+                  <ChevronRight className="text-gray-400 group-hover:text-blue-500" size={24} />
                 </div>
-              ) : (
-                <div className="bg-gray-800 rounded-lg shadow-xl p-8">
-                  <div className="mb-6">
-                    <h2 className="text-2xl font-semibold">{selectedSheet}</h2>
-                    <p className="text-gray-400">{sessionName}</p>
-                  </div>
+              </button>
 
-                  <div className="space-y-4 mb-8">
-                    {workouts.map((workout, index) => (
-                      <div key={index} className="bg-gray-700 rounded-lg p-4">
-                        <h3 className="font-semibold mb-3 text-lg">{workout}</h3>
-                        <div className="grid grid-cols-3 gap-3">
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Weight (lbs)</label>
-                            <input
-                              type="number"
-                              value={workoutInputs[index]?.weight || ''}
-                              onChange={(e) => handleInputChange(index, 'weight', e.target.value)}
-                              placeholder="0"
-                              className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Sets</label>
-                            <input
-                              type="number"
-                              value={workoutInputs[index]?.sets || ''}
-                              onChange={(e) => handleInputChange(index, 'sets', e.target.value)}
-                              placeholder="0"
-                              className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Reps</label>
-                            <input
-                              type="number"
-                              value={workoutInputs[index]?.reps || ''}
-                              onChange={(e) => handleInputChange(index, 'reps', e.target.value)}
-                              placeholder="0"
-                              className="w-full px-3 py-2 bg-gray-600 border border-gray-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-white"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+              <button
+                onClick={() => handleActivitySelect('run')}
+                className="w-full bg-white border-2 border-gray-200 hover:border-cyan-500 rounded-xl p-6 transition shadow-sm hover:shadow-md group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-cyan-100 p-3 rounded-lg group-hover:bg-cyan-500 transition">
+                      <Activity className="text-cyan-600 group-hover:text-white" size={24} />
+                    </div>
+                    <div className="text-left">
+                      <h3 className="text-xl font-semibold text-gray-900">Run</h3>
+                      <p className="text-sm text-gray-500">Log your running session</p>
+                    </div>
                   </div>
-
-                  <div className="flex gap-4">
-                    <button
-                      onClick={endSession}
-                      disabled={loading}
-                      className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 disabled:cursor-not-allowed"
-                    >
-                      {loading ? 'Saving...' : 'End Session & Save'}
-                    </button>
-                    <button
-                      onClick={cancelSession}
-                      disabled={loading}
-                      className="flex-1 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 disabled:cursor-not-allowed"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+                  <ChevronRight className="text-gray-400 group-hover:text-cyan-500" size={24} />
                 </div>
-              )}
-            </>
+              </button>
+            </div>
           )}
 
-          {/* Run Mode */}
-          {mode === 'run' && (
-            <>
-              {!showRunForm ? (
-                <>
-                  <div className="mb-6 flex justify-end">
-                    <button
-                      onClick={startNewRunSession}
-                      className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 shadow-lg"
-                    >
-                      + New Run Session
-                    </button>
+          {/* Step: Select Workout Type */}
+          {step === 'select-workout-type' && (
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 mb-4">Choose your workout type:</p>
+              {availableSheets.map((sheet) => (
+                <button
+                  key={sheet}
+                  onClick={() => handleWorkoutTypeSelect(sheet)}
+                  disabled={loading}
+                  className="w-full bg-white border-2 border-gray-200 hover:border-purple-500 rounded-lg p-4 transition shadow-sm hover:shadow-md group disabled:opacity-50"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg font-semibold text-gray-900">{sheet}</span>
+                    <ChevronRight className="text-gray-400 group-hover:text-purple-500" size={20} />
                   </div>
+                </button>
+              ))}
+            </div>
+          )}
 
-                  <div className="bg-gray-800 rounded-lg shadow-xl overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="bg-gray-700">
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Session</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Distance (km)</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Duration (min)</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Pace (min/km)</th>
-                            <th className="px-6 py-4 text-left text-sm font-semibold text-gray-300">Cadence (spm)</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {loading && runSessions.length === 0 ? (
-                            <tr>
-                              <td colSpan="5" className="px-6 py-8 text-center text-gray-400">
-                                Loading sessions...
-                              </td>
-                            </tr>
-                          ) : runSessions.length === 0 ? (
-                            <tr>
-                              <td colSpan="5" className="px-6 py-8 text-center text-gray-400">
-                                No run sessions yet. Start tracking your runs!
-                              </td>
-                            </tr>
-                          ) : (
-                            runSessions.map((session, index) => (
-                              <tr key={index} className="border-t border-gray-700 hover:bg-gray-700 hover:bg-opacity-30 transition">
-                                <td className="px-6 py-4 text-sm">{session[0] || '-'}</td>
-                                <td className="px-6 py-4 text-sm">{session[1] || '-'}</td>
-                                <td className="px-6 py-4 text-sm">{session[2] || '-'}</td>
-                                <td className="px-6 py-4 text-sm">{session[3] || '-'}</td>
-                                <td className="px-6 py-4 text-sm">{session[4] || '-'}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="bg-gray-800 rounded-lg shadow-xl p-8">
-                  <h2 className="text-2xl font-semibold mb-6">New Run Session</h2>
-                  
-                  <div className="space-y-4 mb-8">
-                    <div>
-                      <label className="block text-sm font-medium mb-2">Session Name</label>
-                      <input
-                        type="text"
-                        value={runData.session}
-                        onChange={(e) => setRunData({ ...runData, session: e.target.value })}
-                        className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white"
-                        placeholder="e.g., Oct 28, 2025, 10:30 AM"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Distance</label>
-                        <input
-                          type="text"
-                          value={runData.distance}
-                          onChange={(e) => setRunData({ ...runData, distance: e.target.value })}
-                          className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white"
-                          placeholder="e.g., 5 km or 3.1 miles"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Duration</label>
-                        <input
-                          type="text"
-                          value={runData.duration}
-                          onChange={(e) => setRunData({ ...runData, duration: e.target.value })}
-                          className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white"
-                          placeholder="e.g., 25:30 or 25 min 30 sec"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Pace</label>
-                        <input
-                          type="text"
-                          value={runData.pace}
-                          onChange={(e) => setRunData({ ...runData, pace: e.target.value })}
-                          className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white"
-                          placeholder="e.g., 5:06/km or 8:12/mile"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium mb-2">Cadence</label>
-                        <input
-                          type="text"
-                          value={runData.cadence}
-                          onChange={(e) => setRunData({ ...runData, cadence: e.target.value })}
-                          className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-white"
-                          placeholder="e.g., 170 spm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-4">
-                    <button
-                      onClick={saveRunSession}
-                      disabled={loading}
-                      className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 disabled:cursor-not-allowed shadow-lg"
-                    >
-                      {loading ? 'Saving...' : 'Save Session'}
-                    </button>
-                    <button
-                      onClick={cancelRunSession}
-                      disabled={loading}
-                      className="flex-1 bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 disabled:cursor-not-allowed shadow-lg"
-                    >
-                      Cancel
-                    </button>
-                  </div>
+          {/* Step: Exercise List */}
+          {step === 'exercise-list' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">{selectedSheet}</h2>
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <Calendar size={12} />
+                    {sessionName}
+                  </p>
                 </div>
-              )}
-            </>
+              </div>
+
+              {workouts.map((workout, index) => (
+                <button
+                  key={index}
+                  onClick={() => handleExerciseClick(index)}
+                  className="w-full bg-white border-2 border-gray-200 hover:border-blue-500 rounded-lg p-4 transition shadow-sm hover:shadow-md group text-left"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1">
+                      {workoutDataStore[index] && (
+                        <div className="bg-green-100 p-1 rounded">
+                          <Check className="text-green-600" size={16} />
+                        </div>
+                      )}
+                      <span className="text-gray-900 font-medium">{workout}</span>
+                    </div>
+                    <ChevronRight className="text-gray-400 group-hover:text-blue-500" size={20} />
+                  </div>
+                </button>
+              ))}
+
+              <button
+                onClick={resetToStart}
+                className="w-full mt-6 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold py-4 rounded-lg shadow-md transition"
+              >
+                End Session
+              </button>
+            </div>
+          )}
+
+          {/* Step: Exercise Input */}
+          {step === 'exercise-input' && selectedExerciseIndex !== null && (
+            <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">{workouts[selectedExerciseIndex]}</h2>
+              
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Weight (lbs)</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={exerciseData.weight}
+                    onChange={(e) => setExerciseData({ ...exerciseData, weight: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-4 py-4 text-lg bg-gray-50 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Sets</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={exerciseData.sets}
+                    onChange={(e) => setExerciseData({ ...exerciseData, sets: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-4 py-4 text-lg bg-gray-50 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Reps</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={exerciseData.reps}
+                    onChange={(e) => setExerciseData({ ...exerciseData, reps: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-4 py-4 text-lg bg-gray-50 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={saveExercise}
+                  disabled={loading}
+                  className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-4 rounded-lg shadow-md transition disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => setStep('exercise-list')}
+                  disabled={loading}
+                  className="px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-4 rounded-lg transition"
+                >
+                  Back
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step: Run Form */}
+          {step === 'run-form' && (
+            <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-200">
+              <h2 className="text-xl font-bold text-gray-900 mb-6">Log Your Run</h2>
+              
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Session Name</label>
+                  <input
+                    type="text"
+                    value={runData.session}
+                    onChange={(e) => setRunData({ ...runData, session: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-gray-900"
+                    placeholder="e.g., Morning Run"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Distance</label>
+                  <input
+                    type="text"
+                    value={runData.distance}
+                    onChange={(e) => setRunData({ ...runData, distance: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-gray-900"
+                    placeholder="e.g., 5 km"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Duration</label>
+                  <input
+                    type="text"
+                    value={runData.duration}
+                    onChange={(e) => setRunData({ ...runData, duration: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-gray-900"
+                    placeholder="e.g., 25:30"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Pace</label>
+                  <input
+                    type="text"
+                    value={runData.pace}
+                    onChange={(e) => setRunData({ ...runData, pace: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-gray-900"
+                    placeholder="e.g., 5:06/km"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">Cadence</label>
+                  <input
+                    type="text"
+                    value={runData.cadence}
+                    onChange={(e) => setRunData({ ...runData, cadence: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent text-gray-900"
+                    placeholder="e.g., 170 spm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={saveRunSession}
+                  disabled={loading}
+                  className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold py-4 rounded-lg shadow-md transition disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Saving...' : 'Save Run'}
+                </button>
+                <button
+                  onClick={resetToStart}
+                  disabled={loading}
+                  className="px-6 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-4 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>
