@@ -12,7 +12,9 @@ export default function Diet() {
   const [tdee, setTdee] = useState(0);
   const [deficit, setDeficit] = useState(0);
   const [aiLoading, setAiLoading] = useState(false);
-  const fileInputRef = useRef(null);
+  const [showPhotoOptions, setShowPhotoOptions] = useState(false);
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
   
   const [newMeal, setNewMeal] = useState({
     name: '',
@@ -255,8 +257,21 @@ export default function Diet() {
 
   const triggerCameraInput = () => {
     if (!aiLoading && !loading) {
-      fileInputRef.current?.click();
+      setShowPhotoOptions(true);
     }
+  };
+
+  const handlePhotoOption = (option) => {
+    setShowPhotoOptions(false);
+    const targetRef = option === 'camera' ? cameraInputRef : galleryInputRef;
+    if (targetRef?.current) {
+      // Delay to ensure modal closes before file dialog opens
+      setTimeout(() => targetRef.current?.click(), 150);
+    }
+  };
+
+  const closePhotoOptions = () => {
+    setShowPhotoOptions(false);
   };
 
   const handleAddMeal = async (e) => {
@@ -431,6 +446,42 @@ export default function Diet() {
 
       <BottomNav />
 
+      {showPhotoOptions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 p-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-2">Log from Photo</h4>
+            <p className="text-sm text-gray-500">
+              Choose how you want to add a picture for AI calorie detection.
+            </p>
+            <div className="mt-5 space-y-3">
+              <button
+                type="button"
+                onClick={() => handlePhotoOption('camera')}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-semibold transition"
+              >
+                <Camera size={18} />
+                Use Camera
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePhotoOption('gallery')}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-gray-200 hover:border-gray-300 text-gray-700 font-semibold transition"
+              >
+                <Plus size={18} />
+                Choose Photo
+              </button>
+              <button
+                type="button"
+                onClick={closePhotoOptions}
+                className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Food Modal */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -448,10 +499,17 @@ export default function Diet() {
                   <Camera size={18} />
                 </button>
                 <input
-                  ref={fileInputRef}
+                  ref={cameraInputRef}
                   type="file"
                   accept="image/*"
                   capture="environment"
+                  className="hidden"
+                  onChange={handlePhotoUpload}
+                />
+                <input
+                  ref={galleryInputRef}
+                  type="file"
+                  accept="image/*"
                   className="hidden"
                   onChange={handlePhotoUpload}
                 />
