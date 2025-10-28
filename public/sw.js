@@ -1,4 +1,4 @@
-const CACHE_NAME = 'get-good-cache-v2';
+const CACHE_NAME = 'get-good-cache-v3';
 const OFFLINE_URLS = ['/'];
 
 self.addEventListener('install', (event) => {
@@ -21,6 +21,17 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') {
+    return;
+  }
+
+  const requestUrl = new URL(event.request.url);
+
+  // Always bypass cache for API routes and external resources
+  if (
+    requestUrl.origin === self.location.origin &&
+    requestUrl.pathname.startsWith('/api/')
+  ) {
+    event.respondWith(fetch(event.request));
     return;
   }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import BottomNav from '../components/BottomNav';
-import { User, Scale, TrendingUp, X, Check, Activity, Flame } from 'lucide-react';
+import { User, Scale, TrendingUp, X, Check, Activity, Flame, NotebookPen } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Profile() {
@@ -188,13 +188,6 @@ export default function Profile() {
     }
   };
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good Morning';
-    if (hour < 18) return 'Good Afternoon';
-    return 'Good Evening';
-  };
-
   const getLatestWeight = () => {
     if (weightHistory.length === 0) return 'N/A';
     return weightHistory[weightHistory.length - 1][1] + ' kg';
@@ -234,10 +227,14 @@ export default function Profile() {
 
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 pb-20">
         <div className="container mx-auto px-4 py-6 max-w-md">
-          {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold mb-2 text-gray-900">👤 {getGreeting()}!</h1>
-            <p className="text-gray-600">Your fitness journey starts here</p>
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-[28px] text-gray-900 leading-tight font-luckiest">
+                Profile Overview
+              </h1>
+              <p className="text-sm text-gray-500">Your fitness journey at a glance</p>
+            </div>
+            <NotebookPen size={26} className="text-gray-900" />
           </div>
 
           {error && (

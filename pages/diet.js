@@ -307,10 +307,14 @@ export default function Diet() {
 
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 pb-20">
         <div className="container mx-auto px-4 py-6 max-w-md">
-          {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold mb-2 text-gray-900">🍽️ Diet Tracker</h1>
-            <p className="text-gray-600">{getCurrentDate()}</p>
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-[28px] text-gray-900 leading-tight font-luckiest">
+                Food Tracker
+              </h1>
+              <p className="text-sm text-gray-500">{getCurrentDate()}</p>
+            </div>
+            <Utensils size={26} className="text-gray-900" />
           </div>
 
           {/* Error/Success Messages */}
