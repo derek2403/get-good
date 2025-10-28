@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import BottomNav from '../components/BottomNav';
-import { User, Scale, TrendingUp, X, Check, Activity, Flame, NotebookPen } from 'lucide-react';
+import { User, Scale, TrendingUp, Calendar, X, Check, ChevronDown, Activity } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Profile() {
@@ -15,9 +15,12 @@ export default function Profile() {
   const [success, setSuccess] = useState('');
   const [activeTab, setActiveTab] = useState('weight');
   
-  const [deficitHistory, setDeficitHistory] = useState([]);
-  const [deficitStats, setDeficitStats] = useState(null);
-  const [loadingDeficit, setLoadingDeficit] = useState(false);
+  // Workout states
+  const [workoutCategory, setWorkoutCategory] = useState('');
+  const [workoutSheets, setWorkoutSheets] = useState([]);
+  const [selectedSheet, setSelectedSheet] = useState('');
+  const [exerciseStats, setExerciseStats] = useState([]);
+  const [loadingWorkouts, setLoadingWorkouts] = useState(false);
   
   // Run stats
   const [runStats, setRunStats] = useState(null);
@@ -50,29 +53,52 @@ export default function Profile() {
     }
   };
 
-  const loadDeficitHistory = async () => {
-    setLoadingDeficit(true);
+  const loadWorkoutCategory = async (category) => {
+    setLoadingWorkouts(true);
+    setWorkoutCategory(category);
+    setSelectedSheet('');
+    setExerciseStats([]);
+    
     try {
-      const response = await fetch(`/api/diet/deficit-history?limit=45`, {
+      const response = await fetch(`/api/history/workouts?category=${category}`);
+      const data = await response.json();
+      if (data.sheets) {
+        setWorkoutSheets(data.sheets);
+      }
+    } catch (err) {
+      console.error('Failed to load workout sheets:', err);
+    } finally {
+      setLoadingWorkouts(false);
+    }
+  };
+
+  const loadExerciseStats = async (sheet) => {
+    setLoadingWorkouts(true);
+    setSelectedSheet(sheet);
+    setExerciseStats([]); // Clear previous stats
+    
+    try {
+      // Add timestamp to bypass cache
+      const response = await fetch(`/api/history/workouts?sheet=${sheet}&t=${Date.now()}`, {
         cache: 'no-store',
         headers: {
-          'Cache-Control': 'no-cache',
-        },
+          'Cache-Control': 'no-cache'
+        }
       });
-
-      const data = await response.json();
-
+      
       if (!response.ok) {
-        throw new Error(data?.error || 'Failed to load deficit history');
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-
-      setDeficitHistory(Array.isArray(data.history) ? data.history : []);
-      setDeficitStats(data.stats || null);
+      
+      const data = await response.json();
+      
+      if (data.exerciseStats && Array.isArray(data.exerciseStats)) {
+        setExerciseStats([...data.exerciseStats]); // Force new array reference
+      }
     } catch (err) {
-      console.error('Failed to load deficit history:', err);
-      setError('Failed to load deficit history');
+      console.error('Failed to load exercise stats:', err);
     } finally {
-      setLoadingDeficit(false);
+      setLoadingWorkouts(false);
     }
   };
 
@@ -91,10 +117,7 @@ export default function Profile() {
     if (activeTab === 'runs' && !runStats) {
       loadRunStats();
     }
-    if (activeTab === 'deficit' && deficitHistory.length === 0 && !loadingDeficit) {
-      loadDeficitHistory();
-    }
-  }, [activeTab, runStats, deficitHistory.length, loadingDeficit]);
+  }, [activeTab]);
 
   const calculateAge = (dob) => {
     if (!dob) return 0;
@@ -188,6 +211,13 @@ export default function Profile() {
     }
   };
 
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 18) return 'Good Afternoon';
+    return 'Good Evening';
+  };
+
   const getLatestWeight = () => {
     if (weightHistory.length === 0) return 'N/A';
     return weightHistory[weightHistory.length - 1][1] + ' kg';
@@ -197,24 +227,6 @@ export default function Profile() {
     if (weightHistory.length === 0) return 'N/A';
     const tdee = weightHistory[weightHistory.length - 1][2];
     return tdee ? tdee + ' cal' : 'N/A';
-  };
-
-  const formatDateLabel = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) {
-      return dateString;
-    }
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
-  const formatKcal = (value) => {
-    if (!Number.isFinite(value)) {
-      return '0 kcal';
-    }
-    const rounded = Math.round(value);
-    const sign = rounded > 0 ? '+' : '';
-    return `${sign}${rounded} kcal`;
   };
 
   return (
@@ -227,14 +239,10 @@ export default function Profile() {
 
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 pb-20">
         <div className="container mx-auto px-4 py-6 max-w-md">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-[28px] text-gray-900 leading-tight font-luckiest">
-                Profile Overview
-              </h1>
-              <p className="text-sm text-gray-500">Your fitness journey at a glance</p>
-            </div>
-            <NotebookPen size={26} className="text-gray-900" />
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold mb-2 text-gray-900">{getGreeting()}! 👤</h1>
+            <p className="text-gray-600">Your fitness journey</p>
           </div>
 
           {error && (
@@ -366,14 +374,14 @@ export default function Profile() {
                     Weight
                   </button>
                   <button
-                    onClick={() => setActiveTab('deficit')}
+                    onClick={() => setActiveTab('workouts')}
                     className={`flex-1 py-3 text-sm font-semibold transition ${
-                      activeTab === 'deficit'
-                        ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-600'
+                      activeTab === 'workouts'
+                        ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
                         : 'text-gray-600 hover:bg-gray-50'
                     }`}
                   >
-                    Deficit
+                    Workouts
                   </button>
                   <button
                     onClick={() => setActiveTab('runs')}
@@ -464,91 +472,121 @@ export default function Profile() {
                     </div>
                   )}
 
-                  {/* Deficit Tab */}
-                  {activeTab === 'deficit' && (
+                  {/* Workouts Tab */}
+                  {activeTab === 'workouts' && (
                     <div>
                       <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <Flame size={20} />
-                        Calorie Deficit Trend
+                        <Activity size={20} />
+                        Workout Statistics
                       </h3>
-
-                      {loadingDeficit ? (
-                        <div className="flex items-center justify-center py-12">
-                          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-orange-500"></div>
+                      
+                      {!workoutCategory ? (
+                        <div className="space-y-3">
+                          <p className="text-sm text-gray-600 mb-3">Select a category:</p>
+                          <button
+                            onClick={() => loadWorkoutCategory('push')}
+                            className="w-full bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 hover:border-blue-300 rounded-lg p-4 transition text-left"
+                          >
+                            <h4 className="font-semibold text-blue-900">💪 Push</h4>
+                            <p className="text-xs text-blue-600 mt-1">Chest, Shoulders, Triceps</p>
+                          </button>
+                          <button
+                            onClick={() => loadWorkoutCategory('pull')}
+                            className="w-full bg-green-50 hover:bg-green-100 border-2 border-green-200 hover:border-green-300 rounded-lg p-4 transition text-left"
+                          >
+                            <h4 className="font-semibold text-green-900">🎯 Pull</h4>
+                            <p className="text-xs text-green-600 mt-1">Back, Biceps, Rear Delts</p>
+                          </button>
+                          <button
+                            onClick={() => loadWorkoutCategory('leg')}
+                            className="w-full bg-purple-50 hover:bg-purple-100 border-2 border-purple-200 hover:border-purple-300 rounded-lg p-4 transition text-left"
+                          >
+                            <h4 className="font-semibold text-purple-900">🦵 Legs</h4>
+                            <p className="text-xs text-purple-600 mt-1">Quads, Hamstrings, Calves</p>
+                          </button>
                         </div>
-                      ) : deficitHistory.length === 0 ? (
-                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-center text-sm text-orange-700">
-                          No deficit history found. Log meals in the Diet tab to build your trend.
-                        </div>
-                      ) : (
-                        <>
-                          <div className="w-full h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart
-                                data={deficitHistory.map((entry) => ({
-                                  date: formatDateLabel(entry.date),
-                                  deficit: Math.round(entry.deficit),
-                                }))}
-                                margin={{ top: 5, right: 10, left: -20, bottom: 5 }}
-                              >
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                <XAxis
-                                  dataKey="date"
-                                  tick={{ fontSize: 12, fill: '#6b7280' }}
-                                  angle={-45}
-                                  textAnchor="end"
-                                  height={60}
-                                />
-                                <YAxis
-                                  tick={{ fontSize: 12, fill: '#6b7280' }}
-                                  label={{
-                                    value: 'Deficit (kcal)',
-                                    angle: -90,
-                                    position: 'insideLeft',
-                                    style: { fontSize: 12, fill: '#6b7280' },
-                                  }}
-                                />
-                                <Tooltip
-                                  formatter={(value) => [formatKcal(value), 'Deficit']}
-                                  labelFormatter={(label) => `Date: ${label}`}
-                                  contentStyle={{
-                                    backgroundColor: '#ffffff',
-                                    border: '1px solid #e5e7eb',
-                                    borderRadius: '8px',
-                                    padding: '8px 12px',
-                                  }}
-                                  labelStyle={{ color: '#6b7280', fontSize: 12 }}
-                                  itemStyle={{ color: '#f97316', fontWeight: 600 }}
-                                />
-                                <Line
-                                  type="monotone"
-                                  dataKey="deficit"
-                                  stroke="#f97316"
-                                  strokeWidth={2}
-                                  dot={{ fill: '#f97316', r: 4 }}
-                                  activeDot={{ r: 6 }}
-                                />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
-
-                          {deficitStats && (
-                            <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-gray-200">
-                              <div className="text-center">
-                                <p className="text-xs text-gray-500">Minimum</p>
-                                <p className="text-sm font-bold text-gray-900">{formatKcal(deficitStats.min)}</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-xs text-gray-500">Average</p>
-                                <p className="text-sm font-bold text-orange-600">{formatKcal(deficitStats.average)}</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-xs text-gray-500">Maximum</p>
-                                <p className="text-sm font-bold text-gray-900">{formatKcal(deficitStats.max)}</p>
-                              </div>
+                      ) : !selectedSheet ? (
+                        <div>
+                          <button
+                            onClick={() => setWorkoutCategory('')}
+                            className="text-sm text-gray-600 hover:text-gray-900 mb-4 flex items-center gap-1"
+                          >
+                            ← Back
+                          </button>
+                          
+                          {loadingWorkouts ? (
+                            <p className="text-center text-gray-500 py-4">Loading...</p>
+                          ) : (
+                            <div className="space-y-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Select workout:
+                              </label>
+                              {workoutSheets.map((sheet) => (
+                                <button
+                                  key={sheet}
+                                  onClick={() => loadExerciseStats(sheet)}
+                                  className="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg p-3 transition text-left flex items-center justify-between"
+                                >
+                                  <span className="font-medium text-gray-900">{sheet}</span>
+                                  <ChevronDown size={16} className="text-gray-400" />
+                                </button>
+                              ))}
                             </div>
                           )}
-                        </>
+                        </div>
+                      ) : (
+                        <div>
+                          <button
+                            onClick={() => {
+                              setSelectedSheet('');
+                              setExerciseStats([]);
+                            }}
+                            className="text-sm text-gray-600 hover:text-gray-900 mb-4 flex items-center gap-1"
+                          >
+                            ← Back
+                          </button>
+                          
+                          <h4 className="font-semibold text-gray-900 mb-4">{selectedSheet}</h4>
+                          
+                          {loadingWorkouts ? (
+                            <p className="text-center text-gray-500 py-4">Loading...</p>
+                          ) : (
+                            <div className="space-y-4 max-h-96 overflow-y-auto">
+                              {exerciseStats.map((stat, index) => (
+                                <div key={index} className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-gray-200">
+                                  <h5 className="font-semibold text-gray-900 mb-3">{stat.exercise}</h5>
+                                  <div className="grid grid-cols-3 gap-3">
+                                    <div>
+                                      <p className="text-xs text-gray-500 mb-2">Weight (kg)</p>
+                                      <div className="space-y-1">
+                                        <p className="text-xs"><span className="text-green-600 font-semibold">Max:</span> {stat.maxWeight}</p>
+                                        <p className="text-xs"><span className="text-blue-600 font-semibold">Avg:</span> {stat.avgWeight}</p>
+                                        <p className="text-xs"><span className="text-gray-600 font-semibold">Min:</span> {stat.minWeight}</p>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500 mb-2">Sets</p>
+                                      <div className="space-y-1">
+                                        <p className="text-xs"><span className="text-green-600 font-semibold">Max:</span> {stat.maxSets}</p>
+                                        <p className="text-xs"><span className="text-blue-600 font-semibold">Avg:</span> {stat.avgSets}</p>
+                                        <p className="text-xs"><span className="text-gray-600 font-semibold">Min:</span> {stat.minSets}</p>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500 mb-2">Reps</p>
+                                      <div className="space-y-1">
+                                        <p className="text-xs"><span className="text-green-600 font-semibold">Max:</span> {stat.maxReps}</p>
+                                        <p className="text-xs"><span className="text-blue-600 font-semibold">Avg:</span> {stat.avgReps}</p>
+                                        <p className="text-xs"><span className="text-gray-600 font-semibold">Min:</span> {stat.minReps}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-2">Total sessions: {stat.totalSessions}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}

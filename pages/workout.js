@@ -84,28 +84,20 @@ export default function Workout() {
   };
 
   const isToday = (day) => {
-    const now = new Date();
-    const malaysiaNow = new Date(
-      now.getTime() + now.getTimezoneOffset() * 60000 + 8 * 60 * 60000
-    );
-    const checkUtc = Date.UTC(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    const malaysiaCheck = new Date(checkUtc + 8 * 60 * 60000);
-    return malaysiaCheck.toDateString() === malaysiaNow.toDateString();
-  };
-
-  const toMalaysiaDateKey = (year, month, day) => {
-    const utc = Date.UTC(year, month, day);
-    const malaysia = new Date(utc + 8 * 60 * 60000);
-    return malaysia.toISOString().split('T')[0];
+    const today = new Date();
+    const checkDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    return checkDate.toDateString() === today.toDateString();
   };
 
   const hasWorkout = (day) => {
-    const dateStr = toMalaysiaDateKey(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
+      .toISOString().split('T')[0];
     return workoutDates.includes(dateStr);
   };
 
   const hasRun = (day) => {
-    const dateStr = toMalaysiaDateKey(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    const dateStr = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day)
+      .toISOString().split('T')[0];
     return runDates.includes(dateStr);
   };
 
@@ -128,6 +120,13 @@ export default function Workout() {
       hour12: true,
     };
     return now.toLocaleString('en-US', options);
+  };
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 18) return 'Good Afternoon';
+    return 'Good Evening';
   };
 
   const handleActivitySelect = (type) => {
@@ -287,24 +286,25 @@ export default function Workout() {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 pb-20">
         <div className="container mx-auto px-4 py-6 max-w-md">
           {/* Header */}
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-[28px] text-gray-900 leading-tight font-luckiest">
-                Workout Tracker
-              </h1>
-              <p className="text-sm text-gray-500">Log your gym and run sessions</p>
-            </div>
-            <div className="flex items-center gap-2 text-gray-900">
-              <Dumbbell size={26} />
-              {step !== 'start' && (
+          <div className="mb-6">
+            {step === 'start' ? (
+              <>
+                <h1 className="text-3xl font-bold mb-2 text-gray-900">{getGreeting()}! 👋</h1>
+                <p className="text-gray-600">What are you doing today?</p>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {activityType === 'gym' ? '💪 Gym' : '🏃 Run'}
+                </h1>
                 <button
                   onClick={resetToStart}
                   className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition"
                 >
                   <Home size={20} />
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Error/Success Messages */}

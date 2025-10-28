@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import BottomNav from '../components/BottomNav';
-import { Plus, X, Utensils, Flame, Beef, Sandwich, Droplet, Camera, Loader2 } from 'lucide-react';
+import { Plus, X, Utensils, Flame, Beef, Sandwich, Droplet } from 'lucide-react';
 
 export default function Diet() {
   const [meals, setMeals] = useState([]);
@@ -11,10 +11,6 @@ export default function Diet() {
   const [success, setSuccess] = useState('');
   const [tdee, setTdee] = useState(0);
   const [deficit, setDeficit] = useState(0);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [showPhotoOptions, setShowPhotoOptions] = useState(false);
-  const cameraInputRef = useRef(null);
-  const galleryInputRef = useRef(null);
   
   const [newMeal, setNewMeal] = useState({
     name: '',
@@ -70,210 +66,6 @@ export default function Diet() {
     return meals.reduce((sum, meal) => sum + (meal.fat || 0), 0);
   };
 
-  const addMealToServer = async (mealInput) => {
-    const payload = {
-      name: mealInput.name?.trim(),
-      calories:
-        typeof mealInput.calories === 'string'
-          ? parseFloat(mealInput.calories) || 0
-          : Number(mealInput.calories) || 0,
-      protein:
-        typeof mealInput.protein === 'string'
-          ? parseFloat(mealInput.protein) || 0
-          : Number(mealInput.protein) || 0,
-      carbs:
-        typeof mealInput.carbs === 'string'
-          ? parseFloat(mealInput.carbs) || 0
-          : Number(mealInput.carbs) || 0,
-      fat:
-        typeof mealInput.fat === 'string'
-          ? parseFloat(mealInput.fat) || 0
-          : Number(mealInput.fat) || 0,
-    };
-
-    const response = await fetch('/api/diet/food', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok || !result.success) {
-      const message = result?.error || 'Failed to add meal';
-      throw new Error(message);
-    }
-
-    return result;
-  };
-
-  const readFileAsDataURL = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result?.toString() || '');
-      reader.onerror = () => reject(new Error('Failed to read image file'));
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const createImageElement = (dataUrl) => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Failed to load image data'));
-      img.src = dataUrl;
-    });
-  };
-
-  const prepareImageForAnalysis = async (file) => {
-    const originalDataUrl = await readFileAsDataURL(file);
-    const mimeType = file.type && file.type.startsWith('image/')
-      ? file.type
-      : 'image/jpeg';
-
-    try {
-      const image = await createImageElement(originalDataUrl);
-      const maxDimension = 768;
-      const { width, height } = image;
-
-      if (width <= maxDimension && height <= maxDimension) {
-        return {
-          base64: originalDataUrl.split(',')[1] || '',
-          mimeType,
-        };
-      }
-
-      const scale = Math.min(maxDimension / width, maxDimension / height);
-      const targetWidth = Math.max(1, Math.round(width * scale));
-      const targetHeight = Math.max(1, Math.round(height * scale));
-      const canvas = document.createElement('canvas');
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        throw new Error('Canvas not supported');
-      }
-      ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
-
-      const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.72);
-      return {
-        base64: compressedDataUrl.split(',')[1] || '',
-        mimeType: 'image/jpeg',
-      };
-    } catch (error) {
-      console.error('Failed to compress image:', error);
-      return {
-        base64: originalDataUrl.split(',')[1] || '',
-        mimeType,
-      };
-    }
-  };
-
-  const toSafeNumber = (value) => {
-    const numeric = Number.isFinite(value) ? value : parseFloat(value);
-    if (!Number.isFinite(numeric)) {
-      return 0;
-    }
-    return Math.max(0, Math.round(numeric * 10) / 10);
-  };
-
-  const handlePhotoUpload = async (event) => {
-    const input = event.target;
-    const file = input.files?.[0];
-
-    if (!file) {
-      return;
-    }
-
-    setError('');
-    setSuccess('');
-    setAiLoading(true);
-
-    try {
-      const { base64: imageBase64, mimeType } = await prepareImageForAnalysis(file);
-
-      if (!imageBase64 || imageBase64.length < 20) {
-        throw new Error('Invalid image data');
-      }
-
-      if (imageBase64.length > 400000) {
-        throw new Error('Image is too large. Please choose a smaller photo.');
-      }
-
-      const response = await fetch('/api/diet/analyze-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ imageBase64, mimeType }),
-      });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data.success) {
-        const detail = data?.details ? `: ${data.details}` : '';
-        const message = data?.error ? `${data.error}${detail}` : 'Unable to analyze the photo';
-        throw new Error(message);
-      }
-
-      const meal = data.meal || {};
-      const normalizedMeal = {
-        name: meal.name || '',
-        calories: toSafeNumber(meal.calories),
-        protein: toSafeNumber(meal.protein),
-        carbs: toSafeNumber(meal.carbs),
-        fat: toSafeNumber(meal.fat),
-      };
-
-      setNewMeal({
-        name: normalizedMeal.name,
-        calories: normalizedMeal.calories ? normalizedMeal.calories.toString() : '',
-        protein: normalizedMeal.protein ? normalizedMeal.protein.toString() : '',
-        carbs: normalizedMeal.carbs ? normalizedMeal.carbs.toString() : '',
-        fat: normalizedMeal.fat ? normalizedMeal.fat.toString() : '',
-      });
-
-      setLoading(true);
-      await addMealToServer(normalizedMeal);
-      setSuccess('Meal logged from photo!');
-      setShowAddForm(false);
-      setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '' });
-      await loadMeals();
-      await loadDeficit();
-      setTimeout(() => setSuccess(''), 2000);
-    } catch (err) {
-      console.error('AI analysis failed:', err);
-      setError(err.message || 'Failed to analyze the photo. You can enter the details manually.');
-    } finally {
-      setAiLoading(false);
-      setLoading(false);
-      if (input) {
-        input.value = '';
-      }
-    }
-  };
-
-  const triggerCameraInput = () => {
-    if (!aiLoading && !loading) {
-      setShowPhotoOptions(true);
-    }
-  };
-
-  const handlePhotoOption = (option) => {
-    setShowPhotoOptions(false);
-    const targetRef = option === 'camera' ? cameraInputRef : galleryInputRef;
-    if (targetRef?.current) {
-      // Delay to ensure modal closes before file dialog opens
-      setTimeout(() => targetRef.current?.click(), 150);
-    }
-  };
-
-  const closePhotoOptions = () => {
-    setShowPhotoOptions(false);
-  };
-
   const handleAddMeal = async (e) => {
     e.preventDefault();
     
@@ -287,16 +79,35 @@ export default function Diet() {
     setSuccess('');
 
     try {
-      await addMealToServer(newMeal);
-      setSuccess('Meal added successfully!');
-      setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '' });
-      setShowAddForm(false);
-      await loadMeals();
-      await loadDeficit();
-      setTimeout(() => setSuccess(''), 2000);
+      const response = await fetch('/api/diet/food', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newMeal.name,
+          calories: parseFloat(newMeal.calories) || 0,
+          protein: parseFloat(newMeal.protein) || 0,
+          carbs: parseFloat(newMeal.carbs) || 0,
+          fat: parseFloat(newMeal.fat) || 0,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setSuccess('Meal added successfully!');
+        setNewMeal({ name: '', calories: '', protein: '', carbs: '', fat: '' });
+        setShowAddForm(false);
+        await loadMeals();
+        await loadDeficit();
+        setTimeout(() => setSuccess(''), 2000);
+      } else {
+        setError('Failed to add meal');
+      }
     } catch (err) {
-      setError(err.message || 'Failed to add meal');
-      console.error('Failed to add meal:', err);
+      setError('Failed to add meal');
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -322,14 +133,10 @@ export default function Diet() {
 
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 pb-20">
         <div className="container mx-auto px-4 py-6 max-w-md">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h1 className="text-[28px] text-gray-900 leading-tight font-luckiest">
-                Food Tracker
-              </h1>
-              <p className="text-sm text-gray-500">{getCurrentDate()}</p>
-            </div>
-            <Utensils size={26} className="text-gray-900" />
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold mb-2 text-gray-900">🍽️ Diet Tracker</h1>
+            <p className="text-gray-600">{getCurrentDate()}</p>
           </div>
 
           {/* Error/Success Messages */}
@@ -446,74 +253,12 @@ export default function Diet() {
 
       <BottomNav />
 
-      {showPhotoOptions && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-gray-200 p-6">
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">Log from Photo</h4>
-            <p className="text-sm text-gray-500">
-              Choose how you want to add a picture for AI calorie detection.
-            </p>
-            <div className="mt-5 space-y-3">
-              <button
-                type="button"
-                onClick={() => handlePhotoOption('camera')}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-semibold transition"
-              >
-                <Camera size={18} />
-                Use Camera
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePhotoOption('gallery')}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-gray-200 hover:border-gray-300 text-gray-700 font-semibold transition"
-              >
-                <Plus size={18} />
-                Choose Photo
-              </button>
-              <button
-                type="button"
-                onClick={closePhotoOptions}
-                className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Add Food Modal */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl p-6 shadow-2xl border border-gray-200 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-gray-900">Add New Food</h3>
-                <button
-                  type="button"
-                  onClick={triggerCameraInput}
-                  disabled={aiLoading || loading}
-                  className="p-1.5 rounded-full border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed transition"
-                  title="Use photo to log food"
-                >
-                  <Camera size={18} />
-                </button>
-                <input
-                  ref={cameraInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={handlePhotoUpload}
-                />
-                <input
-                  ref={galleryInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handlePhotoUpload}
-                />
-              </div>
+              <h3 className="text-lg font-bold text-gray-900">Add New Food</h3>
               <button
                 onClick={() => {
                   setShowAddForm(false);
@@ -525,13 +270,6 @@ export default function Diet() {
                 <X size={20} className="text-gray-600" />
               </button>
             </div>
-
-            {aiLoading && (
-              <div className="flex items-center gap-2 text-sm text-emerald-600 mb-4">
-                <Loader2 size={16} className="animate-spin" />
-                <span>Analyzing photo with AI...</span>
-              </div>
-            )}
 
             <form onSubmit={handleAddMeal} className="space-y-4">
               <div>

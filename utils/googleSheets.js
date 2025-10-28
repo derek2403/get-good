@@ -640,74 +640,7 @@ export async function updateDeficit() {
   }
 }
 
-export async function getDeficitHistory(limit = 90) {
-  const sheets = await getGoogleSheetsClient();
-  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-
-  try {
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'Deficit!A2:C500',
-    });
-
-    const rows = response.data.values || [];
-
-    const history = rows
-      .map((row) => {
-        const [date, calories, deficit] = row;
-        const parsedDeficit = parseFloat(deficit);
-        const parsedCalories = parseFloat(calories);
-        if (!date) {
-          return null;
-        }
-        return {
-          date,
-          totalCalories: Number.isFinite(parsedCalories) ? parsedCalories : 0,
-          deficit: Number.isFinite(parsedDeficit) ? parsedDeficit : 0,
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    if (limit && Number.isFinite(limit) && limit > 0) {
-      return history.slice(-limit);
-    }
-
-    return history;
-  } catch (error) {
-    console.error('Error fetching deficit history:', error);
-    throw error;
-  }
-}
-
 // Get calendar activities (workout and run dates)
-const TARGET_TIMEZONE_OFFSET_MINUTES = 8 * 60; // Malaysia (UTC+8)
-
-const parseToMalaysiaDate = (value) => {
-  if (!value) {
-    return null;
-  }
-
-  const parsed = new Date(value);
-  if (!(parsed instanceof Date) || Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
-  const utc = parsed.getTime() + parsed.getTimezoneOffset() * 60000;
-  const malaysia = utc + TARGET_TIMEZONE_OFFSET_MINUTES * 60000;
-  return new Date(malaysia);
-};
-
-const formatDateKey = (date) => {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return null;
-  }
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 export async function getCalendarActivities() {
   const sheets = await getGoogleSheetsClient();
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
@@ -741,9 +674,9 @@ export async function getCalendarActivities() {
         if (session && session.trim() !== '') {
           // Parse date from session name (e.g., "Oct 28, 2025, 12:46 AM")
           try {
-            const date = parseToMalaysiaDate(session);
-            const dateStr = formatDateKey(date);
-            if (dateStr) {
+            const date = new Date(session);
+            if (!isNaN(date.getTime())) {
+              const dateStr = date.toISOString().split('T')[0];
               if (!workoutDates.includes(dateStr)) {
                 workoutDates.push(dateStr);
               }
@@ -766,9 +699,9 @@ export async function getCalendarActivities() {
       runSessions.forEach(row => {
         if (row[0]) {
           try {
-            const date = parseToMalaysiaDate(row[0]);
-            const dateStr = formatDateKey(date);
-            if (dateStr) {
+            const date = new Date(row[0]);
+            if (!isNaN(date.getTime())) {
+              const dateStr = date.toISOString().split('T')[0];
               if (!runDates.includes(dateStr)) {
                 runDates.push(dateStr);
               }
